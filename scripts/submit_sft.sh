@@ -4,21 +4,28 @@ set -euo pipefail
 
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
   cat <<'EOF'
-Usage: scripts/submit_sft.sh <configs/sft/experiment.yaml>
+Usage: scripts/submit_sft.sh [--dry-run] <configs/sft/experiment.yaml>
 
 Submits one GPU LSF SFT job using config resources and configs/cluster.yaml.
 The job runs:
   conda run -n <conda_env> accelerate launch --num_processes <n_gpus> src/train/sft.py --config <config>
 
 Examples:
+  scripts/submit_sft.sh --dry-run configs/sft/q3-0.6b_sft_smoke.yaml
   scripts/submit_sft.sh configs/sft/q3-0.6b_sft_smoke.yaml
   scripts/submit_sft.sh configs/sft/q3-8b_sft_tulu.yaml
 EOF
   exit 0
 fi
 
+DRY_RUN=0
+if [ "${1:-}" = "--dry-run" ]; then
+  DRY_RUN=1
+  shift
+fi
+
 if [ "$#" -ne 1 ]; then
-  echo "Usage: $0 <configs/sft/experiment.yaml>" >&2
+  echo "Usage: $0 [--dry-run] <configs/sft/experiment.yaml>" >&2
   exit 2
 fi
 
@@ -102,7 +109,9 @@ fi
 
 RUN_DIR="${REPO}/results/runs/${RUN_ID}"
 LOG_DIR="${RUN_DIR}/logs"
-mkdir -p "${RUN_DIR}" "${LOG_DIR}" "${SCRATCH}/checkpoints/${RUN_ID}" "${HF_HOME_CFG}"
+if [ "${DRY_RUN}" != "1" ]; then
+  mkdir -p "${RUN_DIR}" "${LOG_DIR}" "${HF_HOME_CFG}"
+fi
 
 gpu_req="num=${N_GPUS}:mode=exclusive_process"
 if [[ "${GPU_TYPE}" == *"80"* || "${GPU_TYPE}" == *"a100_80gb"* ]]; then
@@ -111,14 +120,32 @@ fi
 
 submit_job() {
   local job="$1"
+  local cleanup_trap="trap 'rm -rf /tmp/alab_\${LSB_JOBID}' EXIT"
   local cmd="cd ${REPO} && \
+${cleanup_trap} && \
+mkdir -p /tmp/alab_\${LSB_JOBID} && \
 source scripts/lsf/env.sh && \
 export ALAB_SCRATCH=${SCRATCH} HF_HOME=${HF_HOME_CFG} WANDB_ENTITY=${WANDB_ENTITY} && \
-export HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 && \
+export ALAB_NODE_LOCAL=1 ALAB_HUB_PUSH=1 ALAB_NODE_TMP=/tmp/alab_\${LSB_JOBID} && \
 conda run -n ${CONDA_ENV} accelerate launch --num_processes ${N_GPUS} src/train/sft.py --config ${CONFIG}"
 
   echo "run_id=${RUN_ID}"
   echo "log_path=${LOG_DIR}/${job}.%J.out"
+  if [ "${DRY_RUN}" = "1" ]; then
+    echo "cleanup_trap=${cleanup_trap}"
+    echo "bsub_job=${job}"
+    echo "bsub_queue=${QUEUE}"
+    echo "bsub_gpu=${gpu_req}"
+    echo "job_command=${cmd}"
+    LSB_JOBID=DRYRUN \
+    ALAB_NODE_LOCAL=1 \
+    ALAB_HUB_PUSH=1 \
+    ALAB_NODE_TMP=/tmp/alab_DRYRUN \
+    ALAB_SCRATCH="${SCRATCH}" \
+    HF_HOME="${HF_HOME_CFG}" \
+      python3 "${REPO}/src/train/sft.py" --config "${CONFIG}" --dry-run
+    return 0
+  fi
   bsub -q "${QUEUE}" \
        -J "${job}" \
        -n "${N_CPUS}" \

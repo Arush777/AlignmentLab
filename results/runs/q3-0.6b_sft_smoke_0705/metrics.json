@@ -1,0 +1,8 @@
+{
+  "gpu_hours": 0.008573495348294576,
+  "n_gpus": 1,
+  "run_id": "q3-0.6b_sft_smoke_0705",
+  "status": "complete",
+  "updated_at_unix": 1783271177,
+  "wall_hours": 0.008573495348294576
+}
