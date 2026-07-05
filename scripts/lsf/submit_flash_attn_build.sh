@@ -21,9 +21,12 @@ fi
 # sm80 = A100, sm90 = H100 — restricting archs cuts compile time drastically.
 # CUDA toolkit came in via vllm's pip deps (nvidia/cu13 tree holds bin/nvcc + headers).
 CUDA13=/u/arushh/miniconda3/envs/alab-rl/lib/python3.11/site-packages/nvidia/cu13
+# NVCC_THREADS=1: nvcc --threads has a temp-file race (missing .cpp1.ii) — parallelize
+# via MAX_JOBS (ninja) only. Dedicated TMPDIR isolates intermediates on node-local disk.
 CMD="cd ${REPO} && \
 export CUDA_HOME=${CUDA13} PATH=${CUDA13}/bin:\$PATH && \
-export MAX_JOBS=16 NVCC_THREADS=2 FLASH_ATTN_CUDA_ARCHS=\"80;90\" && \
+export TMPDIR=/tmp/fa_build_\${LSB_JOBID} && mkdir -p \$TMPDIR && trap 'rm -rf /tmp/fa_build_\${LSB_JOBID}' EXIT && \
+export MAX_JOBS=16 NVCC_THREADS=1 FLASH_ATTN_CUDA_ARCHS=\"80;90\" && \
 conda run -n alab-rl pip install --no-build-isolation -v ${SDIST}"
 
 echo "log_path=${LOG_DIR}/flash_attn_build.%J.out"
