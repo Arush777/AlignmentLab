@@ -1,0 +1,9 @@
+# Real values for IBM CCC cluster, verified 2026-07-05.
+# GPU pool: ~749 x 80GB (A100 SXM4 + some H100) and 88 x 40GB A100, 8 GPUs/node, 100+ nodes.
+# ALWAYS add `gmem=80G` inside the -gpu "..." request string to avoid landing on 40GB cards.
+queue: "normal"           # bsub -q value (active workhorse queue; JL/U 5000)
+gpu_type: "a100_80gb"     # request via: -gpu "num=N:mode=exclusive_process:gmem=80G"
+gpus_per_node: 8
+scratch: "/u/arushh/alignmentlab_scratch"   # $ALAB_SCRATCH (home GPFS, 77TB free; no separate /scratch exists)
+wandb_entity: "CHANGE_ME"  # set after `wandb login`; until then WANDB_MODE=offline (see scripts/lsf/env.sh)
+hf_home: "/u/arushh/.cache/huggingface"     # reuse existing cache

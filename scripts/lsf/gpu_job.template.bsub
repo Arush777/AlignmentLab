@@ -1,0 +1,13 @@
+#!/bin/bash
+#BSUB -J {{JOB_NAME}}
+#BSUB -q {{QUEUE}}
+#BSUB -gpu "num={{N_GPUS}}:mode=exclusive_process"
+#BSUB -W {{WALL_HOURS}}:00
+#BSUB -o results/runs/{{JOB_NAME}}/lsf.%J.log
+#BSUB -e results/runs/{{JOB_NAME}}/lsf.%J.err
+
+source scripts/lsf/env.sh
+source activate {{CONDA_ENV}}
+export HF_HUB_OFFLINE=1
+
+{{COMMAND}}

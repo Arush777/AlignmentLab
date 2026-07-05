@@ -1,0 +1,10 @@
+/data/
+/third_party/
+results/runs/*/samples.jsonl
+wandb/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+*.log
+.env
+checkpoints/
