@@ -19,10 +19,11 @@ if [ ! -f "${SDIST}" ]; then
 fi
 
 # sm80 = A100, sm90 = H100 — restricting archs cuts compile time drastically.
+# CUDA toolkit came in via vllm's pip deps (nvidia/cu13 tree holds bin/nvcc + headers).
+CUDA13=/u/arushh/miniconda3/envs/alab-rl/lib/python3.11/site-packages/nvidia/cu13
 CMD="cd ${REPO} && \
-export CUDA_HOME=\$(conda run -n alab-rl python -c 'import sys,os; print(os.path.dirname(os.path.dirname(sys.executable)))')/envs/alab-rl && \
-export CUDA_HOME=/u/arushh/miniconda3/envs/alab-rl && \
-export MAX_JOBS=16 NVCC_THREADS=2 FLASH_ATTN_CUDA_ARCHS='80;90' && \
+export CUDA_HOME=${CUDA13} PATH=${CUDA13}/bin:\$PATH && \
+export MAX_JOBS=16 NVCC_THREADS=2 FLASH_ATTN_CUDA_ARCHS=\"80;90\" && \
 conda run -n alab-rl pip install --no-build-isolation -v ${SDIST}"
 
 echo "log_path=${LOG_DIR}/flash_attn_build.%J.out"
