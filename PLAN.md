@@ -98,6 +98,17 @@ and `mkdir -p` all output/log dirs BEFORE submitting (LSF will not create `-o/-e
 - **Week 4:** 14B headline runs; 32B LoRA if smooth.
 - **Week 5–6:** analysis, plots, report, release, resume bullets.
 
+## Storage-phased execution (home quota 100GB hard — added 2026-07-05)
+Full scientific scope, run strictly sequentially. Rules:
+1. Cache only the current phase's models (`--skip-llama` until the Llama phase).
+2. SFT/DPO checkpoints save model-only (`save_only_model`, default true) — no optimizer state.
+3. Per arm: train → ALL evals (lm-eval, GSM-Plus, pass@k generation JSONLs) → push final model
+   to the user's HF Hub account (free archive, public artifact) → delete local weights. Numbers,
+   samples, and completions are always retained; only local weights are rotated.
+4. Never delete the current base SFT checkpoint until every arm derived from it has trained.
+5. Llama phase starts only after all Qwen arms complete and Qwen weights are rotated out.
+6. `alab-eval` env deferred until eval phase (another ~10GB of vllm/torch).
+
 ## Track ownership (no cross-editing)
 - **Sonnet (Track A):** `src/rl/`, `scripts/lsf/ray_*`, env ymls, distributed debugging, final stats.
 - **Codex (Track B):** `src/data/`, `src/train/`, `src/evals/`, `scripts/submit_*.sh`.
