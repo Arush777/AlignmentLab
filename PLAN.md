@@ -98,15 +98,20 @@ and `mkdir -p` all output/log dirs BEFORE submitting (LSF will not create `-o/-e
 - **Week 4:** 14B headline runs; 32B LoRA if smooth.
 - **Week 5–6:** analysis, plots, report, release, resume bullets.
 
-## Storage-phased execution (home quota 100GB hard — added 2026-07-05)
-Full scientific scope, run strictly sequentially. Rules:
-1. Cache only the current phase's models (`--skip-llama` until the Llama phase).
-2. SFT/DPO checkpoints save model-only (`save_only_model`, default true) — no optimizer state.
-3. Per arm: train → ALL evals (lm-eval, GSM-Plus, pass@k generation JSONLs) → push final model
-   to the user's HF Hub account (free archive, public artifact) → delete local weights. Numbers,
-   samples, and completions are always retained; only local weights are rotated.
-4. Never delete the current base SFT checkpoint until every arm derived from it has trained.
-5. Llama phase starts only after all Qwen arms complete and Qwen weights are rotated out.
+## Storage-phased execution (home quota 100GB hard — added 2026-07-05, rev 2)
+Verified 2026-07-05: compute nodes have ~311GB free node-local disk on / and INTERNET ACCESS
+(HF Hub reachable). Architecture:
+1. **Weights never live in home.** Training jobs write all checkpoints to node-local
+   `/tmp/alab_${LSB_JOBID}` (trap-cleaned on exit). At job end: push the final model to the
+   user's HF Hub account (`Arush777/alab-<run_id>`, private by default), copy only small
+   artifacts (metrics.json, trainer_state, logs) to `results/runs/<run_id>/`.
+2. Jobs that need a prior checkpoint (DPO/GRPO init from SFT) download it from HF Hub to
+   node-local disk at job start (`local_dir`, not the home HF cache).
+3. Home holds only: base-model HF cache (`--skip-llama` until the Llama phase), processed data,
+   metrics/completions. SFT/DPO save model-only (`save_only_model` default true).
+4. Per arm: train → ALL evals (lm-eval, GSM-Plus, pass@k generation JSONLs) → Hub push →
+   node cleanup. Numbers, samples, and completions are always retained in home/W&B.
+5. Llama phase starts only after all Qwen arms complete (then Qwen cache may rotate out too).
 6. `alab-eval` env deferred until eval phase (another ~10GB of vllm/torch).
 
 ## Track ownership (no cross-editing)
