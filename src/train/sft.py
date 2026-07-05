@@ -336,9 +336,13 @@ def main() -> int:
     signal.signal(signal.SIGINT, signal_handler)
 
     os.environ.setdefault("WANDB_PROJECT", "alignmentlab")
+    # A placeholder WANDB_ENTITY may be baked into the bsub command at submit
+    # time; the cluster config read at run time is the authoritative value.
+    if os.environ.get("WANDB_ENTITY") == "CHANGE_ME":
+        del os.environ["WANDB_ENTITY"]
     wandb_entity = str(cluster.get("wandb_entity", "") or "")
     if wandb_entity and wandb_entity != "CHANGE_ME":
-        os.environ.setdefault("WANDB_ENTITY", wandb_entity)
+        os.environ["WANDB_ENTITY"] = wandb_entity
 
     from datasets import load_dataset
     import torch
