@@ -24,7 +24,7 @@ CUDA13=/u/arushh/miniconda3/envs/alab-rl/lib/python3.11/site-packages/nvidia/cu1
 # NVCC_THREADS=1: nvcc --threads has a temp-file race (missing .cpp1.ii) — parallelize
 # via MAX_JOBS (ninja) only. Dedicated TMPDIR isolates intermediates on node-local disk.
 CMD="cd ${REPO} && \
-export CUDA_HOME=${CUDA13} PATH=${CUDA13}/bin:\$PATH && \
+export CUDA_HOME=${CUDA13} PATH=${CUDA13}/bin:\$PATH LIBRARY_PATH=${CUDA13}/lib:\${LIBRARY_PATH:-} && \
 export TMPDIR=/tmp/fa_build_\${LSB_JOBID} && mkdir -p \$TMPDIR && \
 export MAX_JOBS=16 NVCC_THREADS=1 FLASH_ATTN_CUDA_ARCHS=\"80;90\" && \
 conda run -n alab-rl pip install --no-build-isolation -v ${SDIST}"
