@@ -17,7 +17,7 @@ Cluster rules (hard):
    `allenai/tulu-3-sft-mixture`, `HuggingFaceH4/ultrafeedback_binarized`, `nvidia/HelpSteer2`,
    `agentica-org/DeepScaleR-Preview-Dataset`, `openai/gsm8k`, `HuggingFaceH4/MATH-500`,
    `qintongli/GSM-Plus`, plus tokenizers/models `Qwen/Qwen3-0.6B`, `Qwen/Qwen3-8B`,
-   and `meta-llama/Llama-3.1-8B` (gated: assume `HF_TOKEN` env var; skip with a loud warning if unset).
+   and `meta-llama/Llama-3.1-8B` (gated: assume `HF_TOKEN` env var; if unset or access denied, fall back to `meta-llama/Meta-Llama-3-8B` with a loud warning, and skip entirely if that also fails).
 2. `src/data/preprocess.py`: emit `data/processed/{sft.jsonl, pref_uf.jsonl, pref_hs2.jsonl, pref_mix.jsonl, rlvr_math.jsonl}`
    in EXACTLY the schemas of PLAN.md contract §2.
    - SFT: 150k-sample subset of tulu-3, seed 42.
