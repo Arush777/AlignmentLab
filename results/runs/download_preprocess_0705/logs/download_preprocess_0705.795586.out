@@ -1,0 +1,59 @@
+HF_HOME=/u/arushh/.cache/huggingface
+cluster_config=configs/cluster.yaml
+Caching datasets:
+  [FAIL] allenai/tulu-3-sft-mixture: ValueError("Fast download using 'hf_transfer' is enabled (HF_HUB_ENABLE_HF_TRANSFER=1) but 'hf_transfer' package is not available in your environment. Try `pip install hf_transfer`.")
+  [FAIL] HuggingFaceH4/ultrafeedback_binarized: ValueError("Fast download using 'hf_transfer' is enabled (HF_HUB_ENABLE_HF_TRANSFER=1) but 'hf_transfer' package is not available in your environment. Try `pip install hf_transfer`.")
+  [FAIL] nvidia/HelpSteer2: ValueError("Fast download using 'hf_transfer' is enabled (HF_HUB_ENABLE_HF_TRANSFER=1) but 'hf_transfer' package is not available in your environment. Try `pip install hf_transfer`.")
+  [FAIL] agentica-org/DeepScaleR-Preview-Dataset: ValueError("Fast download using 'hf_transfer' is enabled (HF_HUB_ENABLE_HF_TRANSFER=1) but 'hf_transfer' package is not available in your environment. Try `pip install hf_transfer`.")
+  [FAIL] openai/gsm8k/main: ValueError("Fast download using 'hf_transfer' is enabled (HF_HUB_ENABLE_HF_TRANSFER=1) but 'hf_transfer' package is not available in your environment. Try `pip install hf_transfer`.")
+  [FAIL] HuggingFaceH4/MATH-500: ValueError("Fast download using 'hf_transfer' is enabled (HF_HUB_ENABLE_HF_TRANSFER=1) but 'hf_transfer' package is not available in your environment. Try `pip install hf_transfer`.")
+  [FAIL] qintongli/GSM-Plus: ValueError("Fast download using 'hf_transfer' is enabled (HF_HUB_ENABLE_HF_TRANSFER=1) but 'hf_transfer' package is not available in your environment. Try `pip install hf_transfer`.")
+  [FAIL] Maxwell-Jia/AIME_2024: ValueError("Fast download using 'hf_transfer' is enabled (HF_HUB_ENABLE_HF_TRANSFER=1) but 'hf_transfer' package is not available in your environment. Try `pip install hf_transfer`.")
+Caching model snapshots:
+  [FAIL] Qwen/Qwen3-0.6B: ValueError("Fast download using 'hf_transfer' is enabled (HF_HUB_ENABLE_HF_TRANSFER=1) but 'hf_transfer' package is not available in your environment. Try `pip install hf_transfer`.")
+  [FAIL] Qwen/Qwen3-8B: ValueError("Fast download using 'hf_transfer' is enabled (HF_HUB_ENABLE_HF_TRANSFER=1) but 'hf_transfer' package is not available in your environment. Try `pip install hf_transfer`.")
+  [FAIL] meta-llama/Llama-3.1-8B: ValueError("Fast download using 'hf_transfer' is enabled (HF_HUB_ENABLE_HF_TRANSFER=1) but 'hf_transfer' package is not available in your environment. Try `pip install hf_transfer`.")
+  [FAIL] meta-llama/Meta-Llama-3-8B: ValueError("Fast download using 'hf_transfer' is enabled (HF_HUB_ENABLE_HF_TRANSFER=1) but 'hf_transfer' package is not available in your environment. Try `pip install hf_transfer`.")
+
+------------------------------------------------------------
+Sender: LSF System <lsfadmin@cccxc434>
+Subject: Job 795586: <download_preprocess_0705> in cluster <CCCFP15Cluster> Exited
+
+Job <download_preprocess_0705> was submitted from host <ccc-login3> by user <arushh> in cluster <CCCFP15Cluster> at Sun Jul  5 09:20:08 2026
+Job was executed on host(s) <8*cccxc434>, in queue <normal>, as user <arushh> in cluster <CCCFP15Cluster> at Sun Jul  5 09:19:25 2026
+</u/arushh> was used as the home directory.
+</u/arushh/Arush/Project/AlignmentLab> was used as the working directory.
+Started at Sun Jul  5 09:19:25 2026
+Terminated at Sun Jul  5 09:20:00 2026
+Results reported at Sun Jul  5 09:20:00 2026
+
+Your job looked like:
+
+------------------------------------------------------------
+# LSBATCH: User input
+bash -lc "cd /u/arushh/Arush/Project/AlignmentLab && source scripts/lsf/env.sh && export ALAB_SCRATCH=/u/arushh/alignmentlab_scratch HF_HOME=/u/arushh/.cache/huggingface WANDB_ENTITY=CHANGE_ME && conda run -n alab-sft python src/data/download.py --cluster-config configs/cluster.yaml && export HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 && conda run -n alab-sft python src/data/preprocess.py"
+------------------------------------------------------------
+
+Exited with exit code 1.
+
+Resource usage summary:
+
+    CPU time :                                   14.51 sec.
+    Max Memory :                                 -
+    Average Memory :                             -
+    Total Requested Memory :                     128.00 GB
+    Delta Memory :                               -
+    Max Swap :                                   -
+    Max Processes :                              9
+    Max Threads :                                64
+    Run time :                                   35 sec.
+    Turnaround time :                            0 sec.
+
+The output (if any) is above this job summary.
+
+
+
+PS:
+
+Read file </u/arushh/Arush/Project/AlignmentLab/results/runs/download_preprocess_0705/logs/download_preprocess_0705.795586.err> for stderr output of this job.
+

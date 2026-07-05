@@ -239,6 +239,9 @@ def main() -> int:
         logging_steps=int(training.get("logging_steps", 10)),
         save_steps=int(training.get("save_steps", 500)),
         save_total_limit=int(training.get("save_total_limit", 2)),
+        # Home-quota constraint: skip optimizer/scheduler state in checkpoints
+        # (~100GB extra per 8B ckpt). No mid-run resume; wall time must cover the run.
+        save_only_model=as_bool(training.get("save_only_model"), default=True),
         gradient_checkpointing=as_bool(training.get("gradient_checkpointing"), default=True),
         report_to=["wandb"],
         run_name=run_id,

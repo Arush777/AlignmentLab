@@ -141,6 +141,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Cache models only.",
     )
+    parser.add_argument(
+        "--skip-llama",
+        action="store_true",
+        help="Defer the gated Llama snapshot (home-quota phased execution).",
+    )
     return parser.parse_args()
 
 
@@ -178,6 +183,15 @@ def main() -> int:
             if not result.ok:
                 failures.append(result)
 
+        if args.skip_llama:
+            print("  [SKIP] Llama cache deferred (--skip-llama): home-quota phase plan.", flush=True)
+            if failures:
+                print("\nRequired cache failures:", file=sys.stderr)
+                for failure in failures:
+                    print(f"  - {failure.name}: {failure.detail}", file=sys.stderr)
+                return 1
+            print("All required Phase-1 datasets/models are cached (Llama deferred).", flush=True)
+            return 0
         if not token:
             loud_warning(
                 f"HF_TOKEN is unset; gated {LLAMA_PRIMARY} will likely fail. "

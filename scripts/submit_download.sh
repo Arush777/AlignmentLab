@@ -92,7 +92,7 @@ submit_job() {
   local cmd="cd ${REPO} && \
 source scripts/lsf/env.sh && \
 export ALAB_SCRATCH=${SCRATCH} HF_HOME=${HF_HOME_CFG} WANDB_ENTITY=${WANDB_ENTITY} && \
-conda run -n ${CONDA_ENV} python src/data/download.py --cluster-config configs/cluster.yaml"
+conda run -n ${CONDA_ENV} python src/data/download.py --cluster-config configs/cluster.yaml ${DOWNLOAD_ARGS:-}"
 
   if [ "${PREPROCESS}" = "1" ]; then
     cmd="${cmd} && export HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 && conda run -n ${CONDA_ENV} python src/data/preprocess.py"

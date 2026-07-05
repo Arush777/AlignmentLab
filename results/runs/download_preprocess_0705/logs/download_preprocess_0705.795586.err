@@ -1,0 +1,19 @@
+
+WARNING: Could not cache gated meta-llama/Llama-3.1-8B. Falling back to meta-llama/Meta-Llama-3-8B.
+
+
+WARNING: Skipping Llama cache entirely because both meta-llama/Llama-3.1-8B and meta-llama/Meta-Llama-3-8B failed. Primary error: ValueError("Fast download using 'hf_transfer' is enabled (HF_HUB_ENABLE_HF_TRANSFER=1) but 'hf_transfer' package is not available in your environment. Try `pip install hf_transfer`."). Fallback error: ValueError("Fast download using 'hf_transfer' is enabled (HF_HUB_ENABLE_HF_TRANSFER=1) but 'hf_transfer' package is not available in your environment. Try `pip install hf_transfer`.")
+
+
+Required cache failures:
+  - allenai/tulu-3-sft-mixture: ValueError("Fast download using 'hf_transfer' is enabled (HF_HUB_ENABLE_HF_TRANSFER=1) but 'hf_transfer' package is not available in your environment. Try `pip install hf_transfer`.")
+  - HuggingFaceH4/ultrafeedback_binarized: ValueError("Fast download using 'hf_transfer' is enabled (HF_HUB_ENABLE_HF_TRANSFER=1) but 'hf_transfer' package is not available in your environment. Try `pip install hf_transfer`.")
+  - nvidia/HelpSteer2: ValueError("Fast download using 'hf_transfer' is enabled (HF_HUB_ENABLE_HF_TRANSFER=1) but 'hf_transfer' package is not available in your environment. Try `pip install hf_transfer`.")
+  - agentica-org/DeepScaleR-Preview-Dataset: ValueError("Fast download using 'hf_transfer' is enabled (HF_HUB_ENABLE_HF_TRANSFER=1) but 'hf_transfer' package is not available in your environment. Try `pip install hf_transfer`.")
+  - openai/gsm8k/main: ValueError("Fast download using 'hf_transfer' is enabled (HF_HUB_ENABLE_HF_TRANSFER=1) but 'hf_transfer' package is not available in your environment. Try `pip install hf_transfer`.")
+  - HuggingFaceH4/MATH-500: ValueError("Fast download using 'hf_transfer' is enabled (HF_HUB_ENABLE_HF_TRANSFER=1) but 'hf_transfer' package is not available in your environment. Try `pip install hf_transfer`.")
+  - qintongli/GSM-Plus: ValueError("Fast download using 'hf_transfer' is enabled (HF_HUB_ENABLE_HF_TRANSFER=1) but 'hf_transfer' package is not available in your environment. Try `pip install hf_transfer`.")
+  - Maxwell-Jia/AIME_2024: ValueError("Fast download using 'hf_transfer' is enabled (HF_HUB_ENABLE_HF_TRANSFER=1) but 'hf_transfer' package is not available in your environment. Try `pip install hf_transfer`.")
+  - Qwen/Qwen3-0.6B: ValueError("Fast download using 'hf_transfer' is enabled (HF_HUB_ENABLE_HF_TRANSFER=1) but 'hf_transfer' package is not available in your environment. Try `pip install hf_transfer`.")
+  - Qwen/Qwen3-8B: ValueError("Fast download using 'hf_transfer' is enabled (HF_HUB_ENABLE_HF_TRANSFER=1) but 'hf_transfer' package is not available in your environment. Try `pip install hf_transfer`.")
+ERROR conda.cli.main_run:execute(148): `conda run python src/data/download.py --cluster-config configs/cluster.yaml` failed. (See above for error)
