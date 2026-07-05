@@ -7,7 +7,7 @@ conda_env: alab-sft
 resources:
   n_gpus: 8
   n_cpus: 64
-  mem: 512G
+  mem: 200G
   wall_time: "24:00"
 
 training:
