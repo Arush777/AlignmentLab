@@ -226,7 +226,8 @@ def main() -> int:
         overwrite_output_dir=as_bool(training.get("overwrite_output_dir"), default=True),
         max_length=int(training.get("max_seq_length", 4096)),
         packing=as_bool(training.get("packing"), default=True),
-        assistant_only_loss=as_bool(training.get("assistant_only_loss"), default=True),
+        # default False: Qwen3/Llama chat templates lack {% generation %} assistant masks
+        assistant_only_loss=as_bool(training.get("assistant_only_loss"), default=False),
         bf16=as_bool(training.get("bf16"), default=True),
         learning_rate=float(training.get("learning_rate", 2.0e-5)),
         lr_scheduler_type=str(training.get("lr_scheduler_type", "cosine")),

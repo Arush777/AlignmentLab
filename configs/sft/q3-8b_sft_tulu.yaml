@@ -15,7 +15,7 @@ training:
   num_train_epochs: 1
   max_seq_length: 4096
   packing: true
-  assistant_only_loss: true
+  assistant_only_loss: false  # Qwen3/Llama chat templates lack {% generation %} masks; full-sequence loss keeps arms symmetric
   bf16: true
   learning_rate: 2.0e-5
   lr_scheduler_type: cosine
