@@ -1,0 +1,58 @@
+# GRPO on Qwen3-8B for the RLVR control battery (RQ1). Reward arm is chosen at
+# launch by `reward_mode` here or `--reward-mode {gt,random,format}` on train_grpo.py;
+# EVERYTHING ELSE stays identical across arms (that is the whole point of the control).
+#
+# Also works unchanged for meta-llama/Llama-3.1-8B via `--model meta-llama/Llama-3.1-8B`
+# (no Qwen-specific assumptions). Init from an SFT checkpoint with `--sft-ckpt <path>`
+# or set `sft_ckpt` below.
+
+model: Qwen/Qwen3-8B
+model_short: q3-8b
+sft_ckpt: null            # null -> start from `model`; else path to SFT checkpoint (contract §5)
+reward_mode: gt           # gt | random | format  (override per arm at launch)
+seed: 42
+sample_log_rate: 0.01     # fraction of (prompt,response,reward) -> results/runs/<id>/samples.jsonl
+
+data:
+  prompt_dataset: data/processed/rlvr_math.jsonl   # DeepScaleR (+GSM8K train), contract §2 filename
+  data_tag: math
+  input_key: prompt       # list-of-messages, run through the chat template
+  label_key: answer       # gold final-answer string (used by reward_mode=gt)
+  apply_chat_template: true
+  max_samples: 100000
+
+grpo:
+  advantage_estimator: group_norm   # OpenRLHF's GRPO estimator
+  n_samples_per_prompt: 8           # group size 8
+  kl_init_coef: 0.001               # KL coef ~1e-3
+  kl_use_loss: true                 # KL as loss term (GRPO), not reward penalty
+  kl_estimator: k2
+
+rollout:
+  prompt_max_len: 4096              # 4k prompt context
+  response_max_len: 8192            # 8k response
+  batch_size: 128                   # prompts per rollout step
+  micro_batch_size: 8
+  temperature: 1.0
+  top_p: 1.0
+
+train:
+  batch_size: 128                   # global train batch (prompts)
+  micro_batch_size: 2               # per-GPU
+  num_episodes: 1
+  max_epochs: 1
+  actor_lr: 1.0e-6
+  zero_stage: 3                     # ZeRO-3
+  colocate_all: true                # hybrid engine: vLLM colocated with policy+ref
+  packing_samples: true
+  gradient_checkpointing: true
+  max_tokens_per_gpu: 16384
+
+vllm:
+  tensor_parallel_size: 1
+  gpu_memory_utilization: 0.55      # leave room for ZeRO-3 training on the same GPUs
+  enforce_eager: false
+
+ckpt:
+  save_steps: 20
+  save_hf: true
