@@ -80,7 +80,11 @@ if [[ -z "${LSB_JOBID:-}" ]]; then
   # CPU slots: give the trainer plenty of dataloader/host threads. span[hosts=1]
   # keeps a single-node GRPO run on one host (multi-node is opt-in below).
   local_cpus=$(( GPUS * 12 )); [[ ${local_cpus} -lt 8 ]] && local_cpus=8
-  GPU_REQ="num=${GPUS}:mode=exclusive_process:gmem=80G"
+  # mode=shared + j_exclusive=yes: the job still owns the GPUs outright, but the
+  # CUDA compute mode stays DEFAULT. mode=exclusive_process allows only one CUDA
+  # context per GPU, which kills colocated vLLM+DeepSpeed (job 798410 fail vs
+  # 798513 pass, identical otherwise).
+  GPU_REQ="num=${GPUS}:mode=shared:j_exclusive=yes:gmem=80G"
 
   echo "Submitting ${JOBNAME}: queue=${QUEUE} gpus=${GPUS} wall=${WALL}"
   bsub -q "${QUEUE}" \
