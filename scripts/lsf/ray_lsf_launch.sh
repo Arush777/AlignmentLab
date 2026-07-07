@@ -110,6 +110,15 @@ export TOKENIZERS_PARALLELISM="${TOKENIZERS_PARALLELISM:-false}"
 # Compute nodes may be offline; assume the HF cache is pre-populated by a CPU job.
 export HF_HUB_OFFLINE="${HF_HUB_OFFLINE:-1}"
 export TRANSFORMERS_OFFLINE="${TRANSFORMERS_OFFLINE:-1}"
+export ALAB_NODE_LOCAL="${ALAB_NODE_LOCAL:-1}"
+export ALAB_NODE_TMP="${ALAB_NODE_TMP:-/tmp/alab_${LSB_JOBID}}"
+mkdir -p "${ALAB_NODE_TMP}"
+if [[ "${SMOKE}" -eq 1 ]]; then
+  DEFAULT_ALAB_HUB_PUSH=0
+else
+  DEFAULT_ALAB_HUB_PUSH=1
+fi
+export ALAB_HUB_PUSH="${ALAB_HUB_PUSH:-${DEFAULT_ALAB_HUB_PUSH}}"
 
 # GPUs actually available to this job.
 if [[ -n "${CUDA_VISIBLE_DEVICES:-}" ]]; then
@@ -120,16 +129,40 @@ fi
 echo "Visible GPUs: ${NGPU} (CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-unset})"
 
 HEAD_IP="$(hostname -i | awk '{print $1}')"
-# Port derived from job id to avoid collisions between concurrent jobs on a host.
-RAY_PORT=$(( 6000 + (LSB_JOBID % 20000) ))
+# Ray head (gcs_server) port, derived from job id to avoid collisions between
+# concurrent jobs on a host. MUST stay clear of Ray's other fixed/reserved ports:
+# client_server=10001, worker_ports=10002-19999, dashboard=8265. So we pin it to
+# the 6380-7979 band (below all of them). Picking inside 10002-19999 is what killed
+# job 827416 (gcs_server 13416 collided with the worker range).
+RAY_PORT=$(( 6380 + (LSB_JOBID % 1600) ))
 RAY_TMP="${SCRATCH}/ray/${LSB_JOBID}"
 mkdir -p "${RAY_TMP}"
 
 cleanup() {
   echo "=== tearing down Ray (job ${LSB_JOBID}) ==="
   conda run -n "${CONDA_ENV}" ray stop --force >/dev/null 2>&1 || true
+  if [[ -d "${ALAB_NODE_TMP}" ]]; then
+    if find "${ALAB_NODE_TMP}" -name .keep -print -quit | grep -q .; then
+      echo "Preserving ${ALAB_NODE_TMP} because a .keep sentinel was found" >&2
+    else
+      rm -rf "${ALAB_NODE_TMP}"
+    fi
+  fi
 }
 trap cleanup EXIT INT TERM
+
+# Resolve the reward env (arm, run id, sample-log path) and export it BEFORE ray start,
+# so the raylet passes it to every worker that imports reward.py. Without this the
+# workers see reward.py's defaults and ALL arms silently run `gt` (samples land in
+# results/runs/unknown/). Diagnostics from --emit-env go to stderr; stdout is KEY=VALUE.
+echo "Resolving reward env (train_grpo.py --emit-env)..."
+ENV_LINES="$(conda run -n "${CONDA_ENV}" python -u "${REPO}/src/rl/train_grpo.py" \
+             --emit-env --gpus "${NGPU}" "${FORWARD[@]}")" \
+  || { echo "ERROR: --emit-env failed" >&2; exit 1; }
+while IFS= read -r kv; do
+  case "$kv" in ALAB_*=*|HF_HOME=*) export "${kv?}" ;; esac
+done <<< "${ENV_LINES}"
+echo "Reward env: ALAB_REWARD_MODE=${ALAB_REWARD_MODE:-?} ALAB_RUN_ID=${ALAB_RUN_ID:-?}"
 
 echo "Starting Ray head at ${HEAD_IP}:${RAY_PORT} (tmp ${RAY_TMP})"
 conda run -n "${CONDA_ENV}" ray start --head \
@@ -172,4 +205,4 @@ done
 echo "=== launching train_grpo.py ==="
 set -x
 conda run -n "${CONDA_ENV}" python -u "${REPO}/src/rl/train_grpo.py" \
-  --gpus "${NGPU}" "${FORWARD[@]}"
+  --gpus "${NGPU}" --run-id "${ALAB_RUN_ID}" "${FORWARD[@]}"

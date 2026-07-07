@@ -166,7 +166,8 @@ def resolve_output_dir(run_id: str, scratch: Path) -> Path:
 
 def cleanup_trap_text() -> str:
     if as_bool(os.environ.get("ALAB_NODE_LOCAL"), default=False):
-        return f"trap 'rm -rf {shlex.quote(str(node_tmp_dir()))}' EXIT"
+        node_tmp = shlex.quote(str(node_tmp_dir()))
+        return f"trap 'find {node_tmp} -name .keep -print -quit | grep -q . || rm -rf {node_tmp}' EXIT"
     return "none"
 
 
@@ -262,13 +263,22 @@ def push_to_hub_with_retries(
     )
     print(
         "\nWARNING: HF HUB PUSH FAILED AFTER SFT TRAINING COMPLETED. "
-        "THE RUN REMAINS COMPLETE; upload manually from a compute node:\n"
+        "THE RUN REMAINS COMPLETE; checkpoint dir is kept on the node "
+        "(.keep sentinel) so upload manually from that compute node:\n"
         f"  {manual_create}\n"
         f"  {manual_upload}\n"
         f"Last upload error: {last_error}\n",
         file=sys.stderr,
         flush=True,
     )
+    try:
+        checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        (checkpoint_dir / ".keep").write_text(
+            f"hub push failed for {run_id}: {last_error}\n",
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
     return False, repo_id, None
 
 

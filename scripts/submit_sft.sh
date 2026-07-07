@@ -118,25 +118,66 @@ if [[ "${GPU_TYPE}" == *"80"* || "${GPU_TYPE}" == *"a100_80gb"* ]]; then
   gpu_req="${gpu_req}:gmem=80G"
 fi
 
+shell_quote() {
+  printf "%q" "$1"
+}
+
+emit_job_script() {
+  local q_repo q_scratch q_hf_home q_wandb_entity q_conda_env q_n_gpus q_config
+  q_repo="$(shell_quote "${REPO}")"
+  q_scratch="$(shell_quote "${SCRATCH}")"
+  q_hf_home="$(shell_quote "${HF_HOME_CFG}")"
+  q_wandb_entity="$(shell_quote "${WANDB_ENTITY}")"
+  q_conda_env="$(shell_quote "${CONDA_ENV}")"
+  q_n_gpus="$(shell_quote "${N_GPUS}")"
+  q_config="$(shell_quote "${CONFIG}")"
+
+  cat <<EOF
+#!/bin/bash
+set -euo pipefail
+
+: "\${LSB_JOBID:?LSB_JOBID is required for node-local cleanup}"
+
+cd ${q_repo}
+
+export ALAB_NODE_LOCAL=1
+export ALAB_HUB_PUSH=1
+export ALAB_NODE_TMP="/tmp/alab_\${LSB_JOBID}"
+cleanup_node_tmp() {
+  if [ -d "\${ALAB_NODE_TMP}" ] && find "\${ALAB_NODE_TMP}" -name .keep -print -quit | grep -q .; then
+    echo "Preserving \${ALAB_NODE_TMP} because a .keep sentinel was found" >&2
+  else
+    rm -rf "\${ALAB_NODE_TMP}"
+  fi
+}
+trap cleanup_node_tmp EXIT
+mkdir -p "\${ALAB_NODE_TMP}"
+
+source scripts/lsf/env.sh
+
+export ALAB_SCRATCH=${q_scratch}
+export HF_HOME=${q_hf_home}
+export WANDB_ENTITY=${q_wandb_entity}
+
+conda run -n ${q_conda_env} accelerate launch --num_processes ${q_n_gpus} src/train/sft.py --config ${q_config}
+EOF
+}
+
 submit_job() {
   local job="$1"
-  local cleanup_trap="trap 'rm -rf /tmp/alab_\${LSB_JOBID}' EXIT"
-  local cmd="cd ${REPO} && \
-${cleanup_trap} && \
-mkdir -p /tmp/alab_\${LSB_JOBID} && \
-source scripts/lsf/env.sh && \
-export ALAB_SCRATCH=${SCRATCH} HF_HOME=${HF_HOME_CFG} WANDB_ENTITY=${WANDB_ENTITY} && \
-export ALAB_NODE_LOCAL=1 ALAB_HUB_PUSH=1 ALAB_NODE_TMP=/tmp/alab_\${LSB_JOBID} && \
-conda run -n ${CONDA_ENV} accelerate launch --num_processes ${N_GPUS} src/train/sft.py --config ${CONFIG}"
+  local job_script="${LOG_DIR}/${job}.job.sh"
 
   echo "run_id=${RUN_ID}"
   echo "log_path=${LOG_DIR}/${job}.%J.out"
+  echo "job_script=${job_script}"
   if [ "${DRY_RUN}" = "1" ]; then
-    echo "cleanup_trap=${cleanup_trap}"
     echo "bsub_job=${job}"
     echo "bsub_queue=${QUEUE}"
     echo "bsub_gpu=${gpu_req}"
-    echo "job_command=${cmd}"
+    echo "bsub_mem=${MEM}"
+    echo "job_script_body<<'ALAB_JOB'"
+    emit_job_script
+    echo "ALAB_JOB"
     LSB_JOBID=DRYRUN \
     ALAB_NODE_LOCAL=1 \
     ALAB_HUB_PUSH=1 \
@@ -146,6 +187,10 @@ conda run -n ${CONDA_ENV} accelerate launch --num_processes ${N_GPUS} src/train/
       python3 "${REPO}/src/train/sft.py" --config "${CONFIG}" --dry-run
     return 0
   fi
+
+  emit_job_script > "${job_script}"
+  chmod 700 "${job_script}"
+
   bsub -q "${QUEUE}" \
        -J "${job}" \
        -n "${N_CPUS}" \
@@ -155,7 +200,7 @@ conda run -n ${CONDA_ENV} accelerate launch --num_processes ${N_GPUS} src/train/
        -W "${WALL}" \
        -o "${LOG_DIR}/${job}.%J.out" \
        -e "${LOG_DIR}/${job}.%J.err" \
-       bash -lc "${cmd}"
+       < "${job_script}"
 }
 
 submit_job "${RUN_ID}"

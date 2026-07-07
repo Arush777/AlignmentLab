@@ -37,6 +37,13 @@ except ImportError:  # pragma: no cover
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 REWARD_PY = os.path.join(REPO, "src", "rl", "reward.py")
 
+
+def env_true(name, default=False):
+    v = os.environ.get(name)
+    if v is None:
+        return default
+    return v.strip().lower() in ("1", "true", "yes", "on")
+
 METHOD_TAG = {"gt": "grpo-gt", "random": "grpo-rand", "format": "grpo-fmt"}
 MODEL_SHORT = {
     "Qwen/Qwen3-8B": "q3-8b",
@@ -104,7 +111,78 @@ def ensure_smoke_data(path):
     with open(path, "w") as f:
         for r in rows:
             f.write(json.dumps(r) + "\n")
-    print(f"[train_grpo] wrote smoke data: {path} ({len(rows)} rows)")
+    print(f"[train_grpo] wrote smoke data: {path} ({len(rows)} rows)", file=sys.stderr)
+
+
+# ---------------------------------------------------------------------------------
+def hub_repo_id(run_id, cfg, namespace=None):
+    explicit = str(cfg.get("hub_repo_id") or "").strip()
+    if explicit:
+        return explicit
+    ns = namespace or os.environ.get("HF_USERNAME") or os.environ.get("HF_NAMESPACE") or "Arush777"
+    return f"{ns}/alab-{run_id}"
+
+
+def push_to_hub_with_retries(ckpt_dir, run_id, cfg, attempts=3):
+    """Upload the final HF model folder (mirror of src/train/sft.py).
+
+    Never raises; returns (ok, repo_id, url). The only durable copy of a GRPO
+    checkpoint is this push — node-local ckpt_dir is trap-cleaned on job exit.
+    """
+    # The launcher exports HF_HUB_OFFLINE=1 so training loads from the local cache
+    # only; huggingface_hub freezes that env at first import, and it would make
+    # every API call raise OfflineModeIsEnabled. Clear it here (first import site).
+    os.environ["HF_HUB_OFFLINE"] = "0"
+    repo_id = hub_repo_id(run_id, cfg)
+    last_error = None
+    try:
+        from huggingface_hub import HfApi
+
+        api = HfApi()
+        try:
+            ns = str(api.whoami().get("name") or "").strip()
+            if ns:
+                repo_id = hub_repo_id(run_id, cfg, namespace=ns)
+        except Exception as exc:
+            last_error = exc
+
+        for attempt in range(1, attempts + 1):
+            try:
+                api.create_repo(repo_id=repo_id, repo_type="model", private=True, exist_ok=True)
+                api.upload_folder(
+                    repo_id=repo_id,
+                    repo_type="model",
+                    folder_path=str(ckpt_dir),
+                    path_in_repo="",
+                    ignore_patterns=["ckpt/*", "*.log"],  # ckpt/ = DeepSpeed state dir
+                    commit_message=f"Upload AlignmentLab GRPO checkpoint {run_id}",
+                )
+                url = f"https://huggingface.co/{repo_id}"
+                print(f"[train_grpo] HF Hub checkpoint: {url}", flush=True)
+                return True, repo_id, url
+            except Exception as exc:
+                last_error = exc
+                if attempt < attempts:
+                    wait_s = 10 * attempt
+                    print(f"[train_grpo] WARNING: Hub upload attempt {attempt}/{attempts} "
+                          f"failed: {exc}. Retrying in {wait_s}s.", file=sys.stderr, flush=True)
+                    time.sleep(wait_s)
+    except Exception as exc:
+        last_error = exc
+
+    print("\n[train_grpo] WARNING: HF HUB PUSH FAILED AFTER TRAINING COMPLETED. "
+          f"ckpt_dir is kept on the node (.keep sentinel) — upload manually:\n"
+          f"  hf repo create {repo_id} --type model --private || true\n"
+          f"  hf upload {repo_id} {ckpt_dir} . --repo-type model --exclude 'ckpt/*'\n"
+          f"Last upload error: {last_error}\n", file=sys.stderr, flush=True)
+    try:
+        # Tell the launcher's trap not to rm the node-local dir, so a manual
+        # upload from this node is still possible.
+        with open(os.path.join(ckpt_dir, ".keep"), "w") as f:
+            f.write(f"hub push failed for {run_id}: {last_error}\n")
+    except OSError:
+        pass
+    return False, repo_id, None
 
 
 # ---------------------------------------------------------------------------------
@@ -157,7 +235,11 @@ def build_argv(cfg, ngpu, run_id, ckpt_dir, run_dir, ccfg):
          "--reward.remote_url", REWARD_PY,
          "--ckpt.output_dir", ckpt_dir,
          "--ckpt.path", os.path.join(ckpt_dir, "ckpt"),
-         "--ckpt.save_steps", str(c.get("save_steps", 20)),
+         # save_steps=-1: final HF save only. Periodic DeepSpeed checkpoints carry
+         # optimizer states (~100 GB for 8B) and resume is unsupported anyway since
+         # the only durable copy is the final Hub push.
+         "--ckpt.save_steps", str(c.get("save_steps", -1)),
+         "--ckpt.max_num", str(c.get("max_num", 1)),
          "--logger.tensorboard_dir", os.path.join(run_dir, "tb"),
          "--logger.logging_steps", "1"]
 
@@ -202,6 +284,11 @@ def main():
     ap.add_argument("--run-id", default=None)
     ap.add_argument("--smoke", action="store_true")
     ap.add_argument("--dry-run", action="store_true", help="print the OpenRLHF command and exit")
+    ap.add_argument("--emit-env", action="store_true",
+                    help="resolve run_id + reward env, print KEY=VALUE lines to stdout, exit. "
+                         "The launcher exports these BEFORE `ray start` so Ray workers "
+                         "(which run reward.py) inherit ALAB_REWARD_MODE etc. Without this the "
+                         "workers see reward.py's defaults and every arm silently runs `gt`.")
     args = ap.parse_args()
 
     cfg = load_yaml(args.config)
@@ -229,7 +316,22 @@ def main():
     run_dir = os.path.join(REPO, "results", "runs", run_id)
     os.makedirs(run_dir, exist_ok=True)
     scratch = os.environ.get("ALAB_SCRATCH") or ccfg.get("scratch", os.path.join(REPO, "scratch"))
-    ckpt_dir = os.path.join(scratch, "checkpoints", run_id)  # contract §5: never in repo
+    if args.smoke:
+        # $ALAB_SCRATCH is on the quota'd home fileset; a smoke checkpoint is throwaway,
+        # so write it to node-local $TMPDIR (ephemeral, off-quota) to avoid the home
+        # 100GB cap.
+        ckpt_dir = os.path.join(os.environ.get("TMPDIR", "/tmp"), "alab_smoke_ckpt", run_id)
+    elif env_true("ALAB_NODE_LOCAL"):
+        # Home is a 100 GB hard quota and $ALAB_SCRATCH lives on it; one 8B HF
+        # checkpoint (~16 GB) blows it (job 827583). Real runs write to node-local
+        # disk and push the final model to HF Hub; the launcher trap-cleans the dir.
+        node_tmp = os.environ.get("ALAB_NODE_TMP") or f"/tmp/alab_{os.environ.get('LSB_JOBID', os.getpid())}"
+        ckpt_dir = os.path.join(node_tmp, "grpo", run_id)
+    else:
+        ckpt_dir = os.path.join(scratch, "checkpoints", run_id)
+        print("[train_grpo] WARNING: ALAB_NODE_LOCAL not set — checkpoint goes to "
+              f"{ckpt_dir} on the quota'd home fileset; an 8B run WILL die on quota. "
+              "Export ALAB_NODE_LOCAL=1 (ray_lsf_launch.sh does this).", file=sys.stderr)
     os.makedirs(ckpt_dir, exist_ok=True)
 
     if args.smoke:
@@ -256,6 +358,14 @@ def main():
     env["ALAB_REWARD_SEED"] = str(cfg.get("seed", 42))
     env["HF_HOME"] = env.get("HF_HOME", ccfg.get("hf_home", os.path.expanduser("~/.cache/huggingface")))
 
+    # --emit-env: print only the reward env (stdout) for the launcher to export before
+    # `ray start`, so Ray workers running reward.py inherit the arm + run id + log path.
+    if args.emit_env:
+        for k in ("ALAB_REWARD_MODE", "ALAB_RUN_ID", "ALAB_RESULTS_DIR",
+                  "ALAB_SAMPLE_LOG_RATE", "ALAB_REWARD_SEED", "HF_HOME"):
+            print(f"{k}={env[k]}")
+        return 0
+
     argv = build_argv(cfg, ngpu, run_id, ckpt_dir, run_dir, ccfg)
 
     print(f"[train_grpo] run_id={run_id} reward_mode={reward_mode} gpus={ngpu}")
@@ -271,6 +381,12 @@ def main():
     try:
         rc = subprocess.call(argv, env=env, cwd=REPO)
     finally:
+        hub_ok = False
+        hub_repo = hub_repo_id(run_id, cfg)
+        hub_url = None
+        if rc == 0 and env_true("ALAB_HUB_PUSH", default=not args.smoke):
+            hub_ok, hub_repo, hub_url = push_to_hub_with_retries(ckpt_dir, run_id, cfg)
+
         wall_s = time.time() - start
         wall_h = wall_s / 3600.0
         metrics = {
@@ -281,6 +397,10 @@ def main():
             "wall_hours": round(wall_h, 4),
             "gpu_hours": round(ngpu * wall_h, 4),  # compute-matching currency (§4)
             "returncode": rc,
+            "hub_push_ok": hub_ok,
+            "hub_repo_id": hub_repo,
+            "hub_url": hub_url,
+            "output_dir": ckpt_dir,
             "start": _dt.datetime.fromtimestamp(start).isoformat(),
             "end": _dt.datetime.now().isoformat(),
         }

@@ -54,5 +54,8 @@ vllm:
   enforce_eager: false
 
 ckpt:
-  save_steps: 20
+  # No periodic DeepSpeed checkpoints: optimizer state is ~100 GB, and resume is
+  # unsupported because the final Hub model is the only durable copy.
+  save_steps: -1
+  max_num: 1
   save_hf: true
