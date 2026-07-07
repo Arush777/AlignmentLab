@@ -113,6 +113,46 @@ export TRANSFORMERS_OFFLINE="${TRANSFORMERS_OFFLINE:-1}"
 export ALAB_NODE_LOCAL="${ALAB_NODE_LOCAL:-1}"
 export ALAB_NODE_TMP="${ALAB_NODE_TMP:-/tmp/alab_${LSB_JOBID}}"
 mkdir -p "${ALAB_NODE_TMP}"
+for ((i = 0; i < ${#FORWARD[@]}; i++)); do
+  if [[ "${FORWARD[$i]}" != "--sft-ckpt" ]]; then
+    continue
+  fi
+
+  next=$((i + 1))
+  if [[ "${next}" -ge "${#FORWARD[@]}" ]]; then
+    echo "ERROR: --sft-ckpt requires a value" >&2
+    exit 2
+  fi
+
+  sft_ckpt="${FORWARD[$next]}"
+  if [[ "${sft_ckpt}" != hub:* ]]; then
+    continue
+  fi
+
+  sft_repo="${sft_ckpt#hub:}"
+  if [[ -z "${sft_repo}" ]]; then
+    echo "ERROR: --sft-ckpt hub: requires a Hub repo id" >&2
+    exit 2
+  fi
+
+  sft_dest="${ALAB_NODE_TMP}/sft_init"
+  echo "Fetching --sft-ckpt Hub repo ${sft_repo} into ${sft_dest}"
+  if ! fetch_out="$(cd "${REPO}" && HF_HUB_OFFLINE=0 conda run -n "${CONDA_ENV}" bash scripts/fetch_hub_ckpt.sh "${sft_repo}" "${sft_dest}")"; then
+    echo "ERROR: failed to fetch --sft-ckpt Hub repo ${sft_repo} into ${sft_dest}" >&2
+    if [[ -n "${fetch_out:-}" ]]; then
+      printf '%s\n' "${fetch_out}" >&2
+    fi
+    exit 1
+  fi
+  fetched_path="$(printf '%s\n' "${fetch_out}" | awk 'NF { line = $0 } END { print line }')"
+  if [[ -z "${fetched_path}" || ! -d "${fetched_path}" ]]; then
+    echo "ERROR: fetch for --sft-ckpt Hub repo ${sft_repo} did not return a valid local path" >&2
+    echo "Last stdout line: ${fetched_path:-<empty>}" >&2
+    exit 1
+  fi
+  echo "Fetched --sft-ckpt Hub repo ${sft_repo} to ${fetched_path}"
+  FORWARD[$next]="${fetched_path}"
+done
 if [[ "${SMOKE}" -eq 1 ]]; then
   DEFAULT_ALAB_HUB_PUSH=0
 else
