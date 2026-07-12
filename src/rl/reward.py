@@ -108,13 +108,23 @@ def _is_correct(response: str, label: str) -> bool:
     if _MV is not None:
         parse, verify = _MV
         try:
-            # Parse gold; wrap bare gold in \boxed so the parser treats it as an answer.
-            gold_parsed = parse(gold if "\\boxed" in gold or "$" in gold else f"${gold}$")
-            pred_parsed = parse(response)
+            # parsing_timeout=None / timeout_seconds=None disable math-verify's
+            # signal.alarm()-based timeout, which raises "signal only works in main
+            # thread" when reward_func runs in an OpenRLHF remote-reward worker thread.
+            # Without this, parse() threw on EVERY call in training and the bare except
+            # silently scored all answers wrong (gt_accuracy stuck at 0 — the gt arm was
+            # effectively format-only). See math-verify parse() threaded-env guidance.
+            gold_parsed = parse(
+                gold if "\\boxed" in gold or "$" in gold else f"${gold}$",
+                parsing_timeout=None,
+            )
+            pred_parsed = parse(response, parsing_timeout=None)
             if not gold_parsed or not pred_parsed:
                 return False
             # math_verify.verify(gold, target) — order matters; try both directions.
-            return bool(verify(gold_parsed, pred_parsed)) or bool(verify(pred_parsed, gold_parsed))
+            return bool(verify(gold_parsed, pred_parsed, timeout_seconds=None)) or bool(
+                verify(pred_parsed, gold_parsed, timeout_seconds=None)
+            )
         except Exception:
             return False
     # Fallback: sympy-based grader on the extracted boxed answer.

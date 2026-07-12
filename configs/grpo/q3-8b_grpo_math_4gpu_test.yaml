@@ -1,0 +1,60 @@
+# 4-GPU dispatch-speed test variant of q3-8b_grpo_math.yaml. Identical experiment
+# (same global batch size, GRPO group size, sequence lengths, reward logic) --
+# only difference is GPU count plus two memory-relief flags (ref/adam offload)
+# needed because ZeRO-3 shards over fewer GPUs at the same total param+optimizer
+# state size. See train_grpo.py build_argv() for how these two keys are read.
+# Launch with: --gpus 4 --run-id <distinct id, e.g. ..._4gpu_...>
+
+model: Qwen/Qwen3-8B
+model_short: q3-8b
+sft_ckpt: null
+reward_mode: gt
+seed: 42
+sample_log_rate: 0.01
+
+data:
+  prompt_dataset: data/processed/rlvr_math.jsonl
+  data_tag: math
+  input_key: prompt
+  label_key: answer
+  apply_chat_template: true
+  max_samples: 100000
+
+grpo:
+  advantage_estimator: group_norm
+  n_samples_per_prompt: 8
+  kl_init_coef: 0.04   # DeepSeekMath GRPO beta=0.04; 0.001 let KL run away unchecked (see q3-8b_grpo_math.yaml)
+  kl_use_loss: true
+  kl_estimator: k3   # DeepSeekMath's beta=0.04 was calibrated against k3, not k2 -- see q3-8b_grpo_math.yaml
+
+rollout:
+  prompt_max_len: 4096
+  response_max_len: 8192
+  batch_size: 128
+  micro_batch_size: 8
+  temperature: 1.0
+  top_p: 1.0
+
+train:
+  batch_size: 128
+  micro_batch_size: 2
+  num_episodes: 1
+  max_epochs: 1
+  actor_lr: 1.0e-6
+  zero_stage: 3
+  colocate_all: true
+  packing_samples: true
+  gradient_checkpointing: true
+  max_tokens_per_gpu: 16384
+  ref_offload: true         # NEW: frees the frozen ref model's GPU memory to CPU RAM
+  adam_offload: true        # NEW: frees Adam optimizer states to CPU RAM (biggest ZeRO-3 chunk)
+
+vllm:
+  tensor_parallel_size: 1
+  gpu_memory_utilization: 0.55
+  enforce_eager: false
+
+ckpt:
+  save_steps: -1
+  max_num: 1
+  save_hf: true

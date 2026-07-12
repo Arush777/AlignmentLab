@@ -119,7 +119,7 @@ def hub_repo_id(run_id, cfg, namespace=None):
     explicit = str(cfg.get("hub_repo_id") or "").strip()
     if explicit:
         return explicit
-    ns = namespace or os.environ.get("HF_USERNAME") or os.environ.get("HF_NAMESPACE") or "Arush777"
+    ns = namespace or os.environ.get("HF_USERNAME") or os.environ.get("HF_NAMESPACE") or "Arushhh"
     return f"{ns}/alab-{run_id}"
 
 
@@ -195,16 +195,35 @@ def build_argv(cfg, ngpu, run_id, ckpt_dir, run_dir, ccfg):
     c = cfg.get("ckpt", {})
 
     tp = int(v.get("tensor_parallel_size", 1))
-    num_engines = max(1, ngpu // tp)
+    colocate = t.get("colocate_all", True)
+    if colocate:
+        # Hybrid engine: actor+ref+vLLM all share every GPU (vLLM sleeps while
+        # DeepSpeed trains). OpenRLHF asserts actor_gpus == num_engines*tp here.
+        train_gpus = ngpu
+        num_engines = max(1, ngpu // tp)
+    else:
+        # Non-colocated: split the pool into a training sub-pool (actor+ref,
+        # colocate_actor_ref) and a disjoint vLLM sub-pool. No sleep/offload
+        # cycle -> avoids the ray.get() colocation deadlock. train_gpus comes
+        # from train.train_gpus; the rest are vLLM engines (tp=1 each).
+        train_gpus = int(t.get("train_gpus", ngpu - tp))
+        num_engines = int(v.get("num_engines", (ngpu - train_gpus) // tp))
+        assert train_gpus > 0 and num_engines > 0, (
+            f"non-colocated split needs train_gpus>0 and num_engines>0, got "
+            f"train_gpus={train_gpus}, num_engines={num_engines}")
+        assert train_gpus + num_engines * tp == ngpu, (
+            f"non-colocated GPU split must sum to --gpus: train_gpus({train_gpus}) "
+            f"+ num_engines({num_engines})*tp({tp}) != ngpu({ngpu})")
     model = cfg.get("sft_ckpt") or cfg["model"]
     prompt_max = int(r.get("prompt_max_len", 4096))
     resp_max = int(r.get("response_max_len", 8192))
 
     a = ["python", "-m", "openrlhf.cli.train_ppo_ray",
          "--actor.model_name_or_path", str(model),
-         "--actor.num_nodes", "1", "--actor.num_gpus_per_node", str(ngpu),
-         "--ref.num_nodes", "1", "--ref.num_gpus_per_node", str(ngpu),
-         # vLLM rollout engines, colocated with policy (hybrid engine).
+         "--actor.num_nodes", "1", "--actor.num_gpus_per_node", str(train_gpus),
+         "--ref.num_nodes", "1", "--ref.num_gpus_per_node", str(train_gpus),
+         # vLLM rollout engines (colocated with policy under colocate_all, else
+         # on a disjoint GPU sub-pool).
          "--vllm.num_engines", str(num_engines),
          "--vllm.tensor_parallel_size", str(tp),
          "--vllm.gpu_memory_utilization", str(v.get("gpu_memory_utilization", 0.55)),
@@ -248,8 +267,12 @@ def build_argv(cfg, ngpu, run_id, ckpt_dir, run_dir, ccfg):
         a.append("--data.apply_chat_template")
     if g.get("kl_use_loss", True):
         a.append("--algo.kl.use_loss")
-    if t.get("colocate_all", True):
+    if colocate:
         a += ["--train.colocate_all", "--vllm.enable_sleep", "--ds.enable_sleep"]
+    else:
+        # actor+ref share the training sub-pool; vLLM lives on its own GPUs, so
+        # no vLLM/DeepSpeed sleep cycle -> no colocation deadlock.
+        a += ["--train.colocate_actor_ref"]
     if t.get("packing_samples", True):
         a.append("--ds.packing_samples")
     if t.get("gradient_checkpointing", True):
@@ -258,6 +281,13 @@ def build_argv(cfg, ngpu, run_id, ckpt_dir, run_dir, ccfg):
         a.append("--vllm.enforce_eager")
     if c.get("save_hf", True):
         a.append("--ckpt.save_hf")
+    # Opt-in memory relief for reduced-GPU-count runs (default off; does not
+    # affect global batch size, GRPO group size, or sequence lengths, so it
+    # does not change the experiment -- only where state lives).
+    if t.get("ref_offload", False):
+        a.append("--ref.offload")
+    if t.get("adam_offload", False):
+        a.append("--ds.adam_offload")
 
     # W&B only if a key is available and the entity has been configured.
     wandb_entity = ccfg.get("wandb_entity", "CHANGE_ME")

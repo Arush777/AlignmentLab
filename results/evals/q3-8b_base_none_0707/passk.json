@@ -1,0 +1,50 @@
+[
+  {
+    "task": "aime24",
+    "temperature": 1.0,
+    "n_samples": 256,
+    "k": 1,
+    "pass_at_k": 0.19947916666666668,
+    "stderr": 0.05818144150326602,
+    "ci95_low": 0.09479166666666666,
+    "ci95_high": 0.31888020833333336,
+    "n_problems": 30,
+    "n_bootstrap": 10000
+  },
+  {
+    "task": "aime24",
+    "temperature": 1.0,
+    "n_samples": 256,
+    "k": 8,
+    "pass_at_k": 0.3660770160789132,
+    "stderr": 0.07949687413329788,
+    "ci95_low": 0.21525619811783733,
+    "ci95_high": 0.5266867731066581,
+    "n_problems": 30,
+    "n_bootstrap": 10000
+  },
+  {
+    "task": "aime24",
+    "temperature": 1.0,
+    "n_samples": 256,
+    "k": 64,
+    "pass_at_k": 0.49918504007354003,
+    "stderr": 0.08510073974935463,
+    "ci95_low": 0.33031882043309496,
+    "ci95_high": 0.6660863991074601,
+    "n_problems": 30,
+    "n_bootstrap": 10000
+  },
+  {
+    "task": "aime24",
+    "temperature": 1.0,
+    "n_samples": 256,
+    "k": 256,
+    "pass_at_k": 0.5666666666666667,
+    "stderr": 0.09092011134323098,
+    "ci95_low": 0.4,
+    "ci95_high": 0.7333333333333333,
+    "n_problems": 30,
+    "n_bootstrap": 10000
+  }
+]

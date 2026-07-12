@@ -1,0 +1,66 @@
+# 6-GPU NON-COLOCATED variant of q3-8b_grpo_math.yaml, built for the gt arm after
+# the colocated 4-GPU config deadlocked at ~step 57 three times (Ray/vLLM colocate-
+# sleep + DeepSpeed-offload cycle blocks driver in ray.get()). Same experiment --
+# identical global batch, GRPO group size, sequence lengths, reward logic -- only the
+# GPU placement changes: colocate_all is OFF, so vLLM generation runs on its own GPUs
+# separate from training, removing the sleep/offload cycle entirely.
+#
+# Split (see build_argv() in train_grpo.py): train_gpus=4 for actor+ref (ZeRO-3, the
+# sub-pool that already trained healthily to step 57) + vllm.num_engines=2 dedicated
+# generation GPUs = 6 total. Launch with: --gpus 6 --run-id <..._6gpu_...>
+
+model: Qwen/Qwen3-8B
+model_short: q3-8b
+sft_ckpt: null
+reward_mode: gt
+seed: 42
+sample_log_rate: 0.01
+
+data:
+  prompt_dataset: data/processed/rlvr_math.jsonl
+  data_tag: math
+  input_key: prompt
+  label_key: answer
+  apply_chat_template: true
+  max_samples: 100000
+
+grpo:
+  advantage_estimator: group_norm
+  n_samples_per_prompt: 8
+  kl_init_coef: 0.04   # DeepSeekMath GRPO beta=0.04; see q3-8b_grpo_math.yaml
+  kl_use_loss: true
+  kl_estimator: k3     # calibrated against k3, not k2 -- see q3-8b_grpo_math.yaml
+
+rollout:
+  prompt_max_len: 4096
+  response_max_len: 8192
+  batch_size: 128
+  micro_batch_size: 8
+  temperature: 1.0
+  top_p: 1.0
+
+train:
+  batch_size: 128
+  micro_batch_size: 2
+  num_episodes: 1
+  max_epochs: 1
+  actor_lr: 1.0e-6
+  zero_stage: 3
+  colocate_all: false       # NON-COLOCATED: vLLM on its own GPUs (kills the deadlock)
+  train_gpus: 4             # actor+ref sub-pool (colocate_actor_ref); rest -> vLLM
+  packing_samples: true
+  gradient_checkpointing: true
+  max_tokens_per_gpu: 16384
+  ref_offload: true         # ref model params -> CPU RAM (same as the 4-GPU config)
+  adam_offload: true        # Adam optimizer states -> CPU RAM (biggest ZeRO-3 chunk)
+
+vllm:
+  num_engines: 2            # 2 dedicated generation GPUs (train_gpus + engines*tp = 6)
+  tensor_parallel_size: 1
+  gpu_memory_utilization: 0.85   # vLLM owns these GPUs now (was 0.55 when colocated)
+  enforce_eager: false
+
+ckpt:
+  save_steps: -1
+  max_num: 1
+  save_hf: true

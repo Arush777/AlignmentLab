@@ -24,9 +24,9 @@ data:
 grpo:
   advantage_estimator: group_norm   # OpenRLHF's GRPO estimator
   n_samples_per_prompt: 8           # group size 8
-  kl_init_coef: 0.001               # KL coef ~1e-3
+  kl_init_coef: 0.04                # DeepSeekMath GRPO beta=0.04 (Shao et al. 2024); 0.001 let KL run away unchecked (FixedKLController, no adaptive target set)
   kl_use_loss: true                 # KL as loss term (GRPO), not reward penalty
-  kl_estimator: k2
+  kl_estimator: k3   # DeepSeekMath's beta=0.04 was calibrated against k3 (exp(q-p)-1-(q-p)), not k2 ((log_ratio)^2/2) -- k2+0.04 let gt arm's KL run away (0.0004->0.43 by step113, real text degradation observed); k3 is the estimator the coefficient was actually tuned for
 
 rollout:
   prompt_max_len: 4096              # 4k prompt context

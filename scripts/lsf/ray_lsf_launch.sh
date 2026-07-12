@@ -112,6 +112,10 @@ export HF_HUB_OFFLINE="${HF_HUB_OFFLINE:-1}"
 export TRANSFORMERS_OFFLINE="${TRANSFORMERS_OFFLINE:-1}"
 export ALAB_NODE_LOCAL="${ALAB_NODE_LOCAL:-1}"
 export ALAB_NODE_TMP="${ALAB_NODE_TMP:-/tmp/alab_${LSB_JOBID}}"
+# Compute nodes' CUDA toolkit (13.1) is one minor version ahead of the CUDA torch
+# was built against (13.0); DeepSpeed's CPUAdam JIT build (--ds.adam_offload)
+# hard-fails on any mismatch by default even though CUDA 13.x is ABI-compatible.
+export DS_SKIP_CUDA_CHECK="${DS_SKIP_CUDA_CHECK:-1}"
 mkdir -p "${ALAB_NODE_TMP}"
 for ((i = 0; i < ${#FORWARD[@]}; i++)); do
   if [[ "${FORWARD[$i]}" != "--sft-ckpt" ]]; then

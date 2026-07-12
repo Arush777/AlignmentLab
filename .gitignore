@@ -10,3 +10,4 @@ __pycache__/
 checkpoints/
 results/logs/
 results/runs/*/logs/
+results/evals/*/passk_samples.jsonl

@@ -1,0 +1,75 @@
+{
+  "results": {
+    "gsm8k": {
+      "alias": "gsm8k",
+      "source": "openai/gsm8k",
+      "exact_match,none": 0.8612585291887794,
+      "exact_match_stderr,none": 0.009518039816432913,
+      "acc,none": 0.8612585291887794,
+      "acc_stderr,none": 0.009518039816432913,
+      "samples": 1319,
+      "correct": 1136,
+      "model": "/tmp/alab_eval_831676/model"
+    },
+    "math500": {
+      "alias": "math500",
+      "source": "HuggingFaceH4/MATH-500",
+      "exact_match,none": 0.43,
+      "exact_match_stderr,none": 0.022140460699813815,
+      "acc,none": 0.43,
+      "acc_stderr,none": 0.022140460699813815,
+      "samples": 500,
+      "correct": 215,
+      "model": "/tmp/alab_eval_831676/model"
+    },
+    "gsm_plus": {
+      "alias": "gsm_plus",
+      "source": "qintongli/GSM-Plus",
+      "exact_match,none": 0.7012888551933283,
+      "exact_match_stderr,none": 0.004455606106326141,
+      "acc,none": 0.7012888551933283,
+      "acc_stderr,none": 0.004455606106326141,
+      "samples": 10552,
+      "correct": 7400,
+      "model": "/tmp/alab_eval_831676/model"
+    }
+  },
+  "versions": {
+    "gsm8k": 0,
+    "math500": 0,
+    "gsm_plus": 0
+  },
+  "n-shot": {
+    "gsm8k": 0,
+    "math500": 0,
+    "gsm_plus": 0
+  },
+  "configs": {
+    "gsm8k": {
+      "task": "gsm8k",
+      "dataset_path": "openai/gsm8k",
+      "output_type": "generate_until"
+    },
+    "math500": {
+      "task": "math500",
+      "dataset_path": "HuggingFaceH4/MATH-500",
+      "output_type": "generate_until"
+    },
+    "gsm_plus": {
+      "task": "gsm_plus",
+      "dataset_path": "qintongli/GSM-Plus",
+      "output_type": "generate_until"
+    }
+  },
+  "metadata": {
+    "run_id": "q3-8b_sft_tulu_0705",
+    "model": "/tmp/alab_eval_831676/model",
+    "backend": "alignmentlab-vllm",
+    "script": "src/evals/run_lm_eval.py",
+    "limit": null,
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "max_new_tokens": 2048,
+    "elapsed_seconds": 1551.493
+  }
+}
