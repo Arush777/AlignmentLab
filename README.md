@@ -43,6 +43,30 @@ See docs/RUNBOOK.md (coming soon).
 
 ## Results
 
-| Run ID | Method | Data | GPU-hrs | GSM8K | MATH-500 | MMLU | IFEval | pass@1 | pass@256 |
-|---|---|---|---|---|---|---|---|---|---|
-|  |  |  |  |  |  |  |  |  |  |
+### Phase 1 — RLVR reward control battery (Qwen3-8B)
+
+Three GRPO arms that differ **only** in the reward signal, all initialised from the same SFT
+checkpoint (`Arushhh/alab-q3-8b_sft_tulu_0705`), same data/steps/KL/group size. Isolates what
+the *learning signal* does, independent of compute. Metrics are lm-eval `exact_match`.
+
+| Run / model | Reward | GPU-hrs | GSM8K | MATH-500 | GSM-Plus | Status |
+|---|---|---|---|---|---|---|
+| base Qwen3-8B | — | — | 0.916 | 0.688 | 0.752 | reference |
+| SFT init (RL start) | — | 8.2 | 0.861 | 0.430 | 0.701 | done |
+| `grpo-fmt` | +1 iff `\boxed{}` exists | ~98 | 0.498 | 0.248 | 0.385 | done |
+| `grpo-rand` | Bernoulli(0.5) placebo | ~98 | 0.563 | 0.252 | 0.455 | done |
+| `grpo-gt` | correctness (math-verify) | — | — | — | — | re-running (stronger KL) |
+
+**Headline so far:** both correctness-*blind* controls degrade sharply from the SFT start
+(GSM8K 0.86 → 0.50/0.56). KL stayed tiny, so this is behavioural erosion (repetition,
+non-termination, fewer parseable answers) rather than knowledge collapse — the expected
+control signal that a bad/no reward hurts. The `grpo-gt` arm (real reward) is being re-run
+after its first full run hit a **KL runaway / reward over-optimization** (accuracy peaked
+~step 110 then fell as KL blew up); the headline gt-vs-controls comparison lands when it
+finishes. MMLU / IFEval / pass@k columns and the SFT-vs-DPO-vs-GRPO (RQ1/RQ3) table follow
+in later phases.
+
+- **Detailed findings + sample-level analysis:** [`docs/rq1_findings.md`](docs/rq1_findings.md)
+- **Engineering notes (deadlock fix, reward-thread bug, KL control, ops):** [`docs/implementation_notes.md`](docs/implementation_notes.md)
+- **Run status matrix:** [`docs/experiment_cards.md`](docs/experiment_cards.md)
+- Model checkpoints: public on the HF Hub under [`Arushhh/alab-*`](https://huggingface.co/Arushhh).

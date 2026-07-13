@@ -1,0 +1,69 @@
+# 6-GPU NON-COLOCATED gt config with a STRONGER KL leash (kl_init_coef 0.1).
+# Rationale: the first non-colocated run (..._ncol1) trained cleanly past the old
+# step-57 deadlock but then hit a KL RUNAWAY / reward over-optimization — gt_accuracy
+# peaked ~0.37 at step ~110, then fell to ~0.23 while KL blew up 0.06 -> 0.46 (above
+# the old k2/0.001 bug's 0.43). kl_init_coef=0.04 is a FIXED coefficient with no
+# feedback, so it only delayed (not prevented) the runaway. OpenRLHF's AdaptiveKLController
+# is incompatible with the GRPO kl_use_loss path, so the fix is a stronger fixed leash.
+# Standard practice: KL keeps the policy near the SFT distribution to bound reward-model
+# error (Ziegler et al. 2019; Catastrophic Goodhart arXiv:2407.14503).
+#
+# ONLY change vs q3-8b_grpo_math_6gpu.yaml: grpo.kl_init_coef 0.04 -> 0.1 (one clean
+# variable, so the effect is diagnostic). Split unchanged: train_gpus=4 + vllm=2.
+# Launch: --gpus 6 --run-id <..._6gpu_..._kl01>
+
+model: Qwen/Qwen3-8B
+model_short: q3-8b
+sft_ckpt: null
+reward_mode: gt
+seed: 42
+sample_log_rate: 0.01
+
+data:
+  prompt_dataset: data/processed/rlvr_math.jsonl
+  data_tag: math
+  input_key: prompt
+  label_key: answer
+  apply_chat_template: true
+  max_samples: 100000
+
+grpo:
+  advantage_estimator: group_norm
+  n_samples_per_prompt: 8
+  kl_init_coef: 0.1        # STRONGER leash (was 0.04) — prevents the KL runaway / over-optimization
+  kl_use_loss: true
+  kl_estimator: k3         # k3 (exp(q-p)-1-(q-p)); the coef DeepSeekMath calibrated against
+
+rollout:
+  prompt_max_len: 4096
+  response_max_len: 8192
+  batch_size: 128
+  micro_batch_size: 8
+  temperature: 1.0
+  top_p: 1.0
+
+train:
+  batch_size: 128
+  micro_batch_size: 2
+  num_episodes: 1
+  max_epochs: 1
+  actor_lr: 1.0e-6
+  zero_stage: 3
+  colocate_all: false       # NON-COLOCATED: vLLM on its own GPUs (kills the deadlock)
+  train_gpus: 4             # actor+ref sub-pool (colocate_actor_ref); rest -> vLLM
+  packing_samples: true
+  gradient_checkpointing: true
+  max_tokens_per_gpu: 16384
+  ref_offload: true
+  adam_offload: true
+
+vllm:
+  num_engines: 2
+  tensor_parallel_size: 1
+  gpu_memory_utilization: 0.85
+  enforce_eager: false
+
+ckpt:
+  save_steps: -1
+  max_num: 1
+  save_hf: true

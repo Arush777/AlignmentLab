@@ -1,0 +1,61 @@
+# 5-GPU variant of q3-8b_grpo_math_6gpu_kl01.yaml — smaller GPU block to beat queue
+# contention (racing the 6-GPU job; whichever schedules first wins, the other is killed).
+# Identical experiment + stronger KL leash (kl_init_coef 0.1). ONLY difference vs kl01:
+# vllm.num_engines 2 -> 1 (4 train + 1 vLLM = 5). Generation ~2x slower per step than
+# 6-GPU, but schedules far more easily. Launch: --gpus 5 --run-id <..._5gpu_..._kl01>
+
+model: Qwen/Qwen3-8B
+model_short: q3-8b
+sft_ckpt: null
+reward_mode: gt
+seed: 42
+sample_log_rate: 0.01
+
+data:
+  prompt_dataset: data/processed/rlvr_math.jsonl
+  data_tag: math
+  input_key: prompt
+  label_key: answer
+  apply_chat_template: true
+  max_samples: 100000
+
+grpo:
+  advantage_estimator: group_norm
+  n_samples_per_prompt: 8
+  kl_init_coef: 0.1        # STRONGER leash (was 0.04) — prevents the KL runaway / over-optimization
+  kl_use_loss: true
+  kl_estimator: k3
+
+rollout:
+  prompt_max_len: 4096
+  response_max_len: 8192
+  batch_size: 128
+  micro_batch_size: 8
+  temperature: 1.0
+  top_p: 1.0
+
+train:
+  batch_size: 128
+  micro_batch_size: 2
+  num_episodes: 1
+  max_epochs: 1
+  actor_lr: 1.0e-6
+  zero_stage: 3
+  colocate_all: false       # NON-COLOCATED: vLLM on its own GPU (no deadlock)
+  train_gpus: 4             # actor+ref sub-pool; rest -> vLLM
+  packing_samples: true
+  gradient_checkpointing: true
+  max_tokens_per_gpu: 16384
+  ref_offload: true
+  adam_offload: true
+
+vllm:
+  num_engines: 1            # 1 dedicated generation GPU (train_gpus + engines*tp = 5)
+  tensor_parallel_size: 1
+  gpu_memory_utilization: 0.85
+  enforce_eager: false
+
+ckpt:
+  save_steps: -1
+  max_num: 1
+  save_hf: true
