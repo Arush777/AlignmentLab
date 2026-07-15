@@ -39,7 +39,7 @@ AlignmentLab/
 ```
 
 ## Quickstart
-See docs/RUNBOOK.md (coming soon).
+See [`docs/RUNBOOK.md`](docs/RUNBOOK.md).
 
 ## Results
 
@@ -67,6 +67,7 @@ finishes. MMLU / IFEval / pass@k columns and the SFT-vs-DPO-vs-GRPO (RQ1/RQ3) ta
 in later phases.
 
 - **Detailed findings + sample-level analysis:** [`docs/rq1_findings.md`](docs/rq1_findings.md)
+- **RQ1 matching debt + rematch checklist (KL is the confound):** [`docs/rq1_validity.md`](docs/rq1_validity.md)
 - **Engineering notes (deadlock fix, reward-thread bug, KL control, ops):** [`docs/implementation_notes.md`](docs/implementation_notes.md)
 - **Run status matrix:** [`docs/experiment_cards.md`](docs/experiment_cards.md)
 - Model checkpoints: public on the HF Hub under [`Arushhh/alab-*`](https://huggingface.co/Arushhh).

@@ -1,0 +1,36 @@
+# Llama-3.1-8B SFT on tulu-3 (mirror of q3-8b_sft_tulu.yaml).
+# Base weights fetched NODE-LOCAL by submit_sft.sh (not home HF cache).
+run_id: llama31-8b_sft_tulu_0715
+model_name_or_path: meta-llama/Llama-3.1-8B
+dataset_path: data/processed/sft.jsonl
+seed: 42
+conda_env: alab-sft
+hub_repo_id: Arushhh/alab-llama31-8b_sft_tulu_0715
+hub_private: false
+
+resources:
+  n_gpus: 8
+  n_cpus: 64
+  mem: 200G
+  wall_time: "24:00"
+
+training:
+  max_steps: -1
+  num_train_epochs: 1
+  max_seq_length: 4096
+  packing: true
+  assistant_only_loss: false
+  bf16: true
+  learning_rate: 2.0e-5
+  lr_scheduler_type: cosine
+  warmup_ratio: 0.03
+  weight_decay: 0.0
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 8
+  gradient_checkpointing: true
+  logging_steps: 10
+  save_steps: 500
+  save_total_limit: 2
+  deepspeed: true
+  zero_stage: 3
+  dataloader_num_workers: 4

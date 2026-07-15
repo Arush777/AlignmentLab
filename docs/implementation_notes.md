@@ -9,6 +9,7 @@ DeepSpeed ZeRO-3, IBM CCC LSF cluster, model Qwen3-8B.
 |---|---|---|---|---|
 | `q3-8b_grpo_math.yaml` | 8 | colocate_all | 0.04 / k3 | canonical full-node |
 | `q3-8b_grpo_math_4gpu_test.yaml` | 4 | colocate_all + offload | 0.04 / k3 | dispatch test — **deadlocks** |
+| `q3-8b_grpo_math_4gpu_kl01.yaml` | 4 | non-colocated 3+1 | **0.1** / k3 | schedule-friendly deadlock+KL fix |
 | `q3-8b_grpo_math_6gpu.yaml` | 6 | non-colocated 4+2 | 0.04 / k3 | deadlock fix — **over-optimizes** |
 | `q3-8b_grpo_math_6gpu_kl01.yaml` | 6 | non-colocated 4+2 | **0.1** / k3 | deadlock + KL fix |
 | `q3-8b_grpo_math_5gpu_kl01.yaml` | 5 | non-colocated 4+1 | 0.1 / k3 | 5-GPU twin (easier to schedule) |
@@ -38,8 +39,13 @@ the colocated vLLM+DeepSpeed can share GPU context at all (a separate earlier fi
 for `colocate_all: false` splits the GPU pool into a training sub-pool (`train_gpus`, actor+ref
 under `--train.colocate_actor_ref`) and a **disjoint** vLLM sub-pool (`vllm.num_engines`),
 dropping `--vllm.enable_sleep --ds.enable_sleep`. No sleep/offload cycle → no deadlock.
-6-GPU = 4 train + 2 vLLM; 5-GPU = 4 train + 1 vLLM (4 ZeRO-3 GPUs is the floor for 8B).
-Verify any new split with `python src/rl/train_grpo.py --dry-run --gpus N --config ...`.
+6-GPU = 4 train + 2 vLLM; 5-GPU = 4 train + 1 vLLM (kept train_gpus=4 for a
+familiar shard — **not** because 8B cannot fit on fewer). A **4-GPU** non-colocated
+config (`…_4gpu_kl01.yaml`, 3+1) is the right CCC default: format/random already
+**completed** on 4×80G; gt's 4-GPU failure was the colocate **sleep deadlock**, not
+OOM. 8B bf16 weights ≈16GB; Adam (~64GB) is CPU-offloaded. If you ever OOM, shrink
+`micro_batch_size` / `max_tokens_per_gpu` / `response_max_len` — do not buy more GPUs.
+Verify splits with `python src/rl/train_grpo.py --dry-run --gpus N --config ...`.
 
 ## Bug 3 — KL runaway / reward over-optimization (gt)
 Even with the deadlock fixed, gt's first full run over-optimized: gt_accuracy peaked ~step

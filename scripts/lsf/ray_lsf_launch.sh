@@ -45,6 +45,8 @@ GPUS=""
 WALL=""
 JOBNAME=""
 SMOKE=0
+CPUS=""             # optional override for bsub -n (LSF CPU slots)
+EXCLUDE_HOSTS=()    # LSF select[hname!=...] — e.g. Ray MetricsHead flake hosts
 FORWARD=()          # passed through to train_grpo.py
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -52,6 +54,16 @@ while [[ $# -gt 0 ]]; do
     --gpus)        GPUS="$2"; shift 2 ;;
     --wall)        WALL="$2"; shift 2 ;;
     --jobname)     JOBNAME="$2"; shift 2 ;;
+    --cpus)        CPUS="$2"; shift 2 ;;
+    --exclude-hosts)
+      # Comma-separated and/or repeatable: --exclude-hosts a,b --exclude-hosts c
+      IFS=',' read -r -a _ex <<< "${2}"
+      for _h in "${_ex[@]}"; do
+        _h="${_h// /}"
+        [[ -n "${_h}" ]] && EXCLUDE_HOSTS+=("${_h}")
+      done
+      shift 2
+      ;;
     --smoke)       SMOKE=1; FORWARD+=("$1"); shift ;;
     *)             FORWARD+=("$1"); shift ;;
   esac
@@ -77,21 +89,58 @@ if [[ -z "${LSB_JOBID:-}" ]]; then
   mkdir -p "${LOG_DIR}"                      # LSF won't create -o/-e dirs
   mkdir -p "${SCRATCH}/ray"                  # ray temp / spill root
 
-  # CPU slots: give the trainer plenty of dataloader/host threads. span[hosts=1]
-  # keeps a single-node GRPO run on one host (multi-node is opt-in below).
-  local_cpus=$(( GPUS * 12 )); [[ ${local_cpus} -lt 8 ]] && local_cpus=8
+  # CPU slots (-n): LSF counts these in busers/PEND, NOT "number of GRPO jobs".
+  # Old formula GPUS*12 made 4-GPU asks look like 48 PENDING slots and required a
+  # host with 48 free cores (+ often mem*slots). 4 CPUs/GPU with a floor of 16 is
+  # enough for Ray + dataloaders and schedules far more easily. Override: --cpus N.
+  if [[ -n "${CPUS}" ]]; then
+    local_cpus="${CPUS}"
+  elif [[ "${SMOKE}" -eq 1 ]]; then
+    local_cpus=$(( GPUS * 4 )); [[ ${local_cpus} -lt 8 ]] && local_cpus=8
+  else
+    local_cpus=$(( GPUS * 4 )); [[ ${local_cpus} -lt 16 ]] && local_cpus=16
+  fi
   # mode=shared + j_exclusive=yes: the job still owns the GPUs outright, but the
   # CUDA compute mode stays DEFAULT. mode=exclusive_process allows only one CUDA
   # context per GPU, which kills colocated vLLM+DeepSpeed (job 798410 fail vs
   # 798513 pass, identical otherwise).
   GPU_REQ="num=${GPUS}:mode=shared:j_exclusive=yes:gmem=80G"
 
-  echo "Submitting ${JOBNAME}: queue=${QUEUE} gpus=${GPUS} wall=${WALL}"
+  # Optional host exclusions (Ray MetricsHead EOF on cccxc716/cccxc708, etc.).
+  BSUB_EXTRA_R=()
+  if [[ ${#EXCLUDE_HOSTS[@]} -gt 0 ]]; then
+    sel=""
+    for h in "${EXCLUDE_HOSTS[@]}"; do
+      [[ -n "${sel}" ]] && sel+=" && "
+      sel+="hname!=${h}"
+    done
+    BSUB_EXTRA_R+=(-R "select[${sel}]")
+    echo "Host exclusions: select[${sel}]"
+  fi
+
+  echo "Submitting ${JOBNAME}: queue=${QUEUE} gpus=${GPUS} cpus=${local_cpus} wall=${WALL}"
+  # Dry-run: ALAB_BSUB_DRY_RUN=1 prints the bsub line without submitting.
+  if [[ "${ALAB_BSUB_DRY_RUN:-0}" == "1" ]]; then
+    echo "DRY-RUN bsub:" \
+      bsub -q "${QUEUE}" \
+           -J "${JOBNAME}" \
+           -n "${local_cpus}" \
+           -R "span[hosts=1]" \
+           -R "rusage[mem=24G]" \
+           "${BSUB_EXTRA_R[@]}" \
+           -gpu "${GPU_REQ}" \
+           -W "${WALL}" \
+           -o "${LOG_DIR}/${JOBNAME}.%J.out" \
+           -e "${LOG_DIR}/${JOBNAME}.%J.err" \
+           bash "${BASH_SOURCE[0]}" --gpus "${GPUS}" "${FORWARD[@]}"
+    exit 0
+  fi
   bsub -q "${QUEUE}" \
        -J "${JOBNAME}" \
        -n "${local_cpus}" \
        -R "span[hosts=1]" \
        -R "rusage[mem=24G]" \
+       "${BSUB_EXTRA_R[@]}" \
        -gpu "${GPU_REQ}" \
        -W "${WALL}" \
        -o "${LOG_DIR}/${JOBNAME}.%J.out" \

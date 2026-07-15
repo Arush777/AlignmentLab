@@ -123,7 +123,9 @@ shell_quote() {
 }
 
 emit_job_script() {
-  local q_repo q_scratch q_hf_home q_wandb_entity q_conda_env q_n_gpus q_config
+  local q_repo q_scratch q_hf_home q_wandb_entity q_conda_env q_n_gpus q_config q_model
+  local model_name
+  model_name="$(yaml_get "${CONFIG}" model_name_or_path)"
   q_repo="$(shell_quote "${REPO}")"
   q_scratch="$(shell_quote "${SCRATCH}")"
   q_hf_home="$(shell_quote "${HF_HOME_CFG}")"
@@ -131,6 +133,7 @@ emit_job_script() {
   q_conda_env="$(shell_quote "${CONDA_ENV}")"
   q_n_gpus="$(shell_quote "${N_GPUS}")"
   q_config="$(shell_quote "${CONFIG}")"
+  q_model="$(shell_quote "${model_name}")"
 
   cat <<EOF
 #!/bin/bash
@@ -156,10 +159,23 @@ mkdir -p "\${ALAB_NODE_TMP}"
 source scripts/lsf/env.sh
 
 export ALAB_SCRATCH=${q_scratch}
+# Keep HF_HOME for token/datasets metadata, but fetch MODEL weights node-local
+# so home quota is not blown by Llama/Qwen base snapshots.
 export HF_HOME=${q_hf_home}
 export WANDB_ENTITY=${q_wandb_entity}
 
-conda run -n ${q_conda_env} accelerate launch --num_processes ${q_n_gpus} src/train/sft.py --config ${q_config}
+MODEL_SPEC=${q_model}
+LOCAL_MODEL="\${ALAB_NODE_TMP}/base_model"
+echo "Fetching base model \${MODEL_SPEC} -> \${LOCAL_MODEL}"
+HF_HUB_OFFLINE=0 conda run -n ${q_conda_env} bash scripts/fetch_hub_ckpt.sh "\${MODEL_SPEC}" "\${LOCAL_MODEL}"
+LOCAL_MODEL_PATH="\$(find "\${LOCAL_MODEL}" -maxdepth 3 -name config.json -printf '%h\n' | head -1)"
+if [[ -z "\${LOCAL_MODEL_PATH}" ]]; then
+  LOCAL_MODEL_PATH="\${LOCAL_MODEL}"
+fi
+echo "Using local model path \${LOCAL_MODEL_PATH}"
+
+conda run -n ${q_conda_env} accelerate launch --num_processes ${q_n_gpus} \
+  src/train/sft.py --config ${q_config} --model "\${LOCAL_MODEL_PATH}"
 EOF
 }
 
