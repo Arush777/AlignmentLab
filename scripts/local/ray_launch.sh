@@ -52,7 +52,8 @@ while [[ $i -lt ${#FORWARD[@]} ]]; do
 done
 
 RAY_PORT="${RAY_PORT:-$((6380 + RANDOM % 500))}"
-RAY_TMP="${ALAB_SCRATCH}/ray/local_${$}"
+# Ray AF_UNIX sockets must stay under ~107 bytes; keep temp under /tmp, not deep scratch paths.
+RAY_TMP="${RAY_TMP:-/tmp/alab_ray_${$}}"
 mkdir -p "${RAY_TMP}"
 
 cleanup() {

@@ -42,7 +42,7 @@ sync_one() {
     --no-install-package flash-attn
   if [[ "${with_flash}" == "1" && "${env}" != "eval" ]]; then
     echo "=== flash-attn into ${venv} (no-build-isolation) ==="
-    UV_PROJECT_ENVIRONMENT="${venv}" uv pip install --no-build-isolation "flash-attn==2.8.3"
+    UV_PROJECT_ENVIRONMENT="${venv}" uv pip install --python "${venv}/bin/python" --no-build-isolation "flash-attn==2.8.3"
   else
     echo "(skipping flash-attn; pass --flash-attn to build it)"
   fi
