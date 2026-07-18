@@ -1,0 +1,65 @@
+# Single-GPU (or CUDA_VISIBLE_DEVICES-pinned) H200 GRPO recipe for RQ1 kl01.
+# Colocated actor+ref+vLLM — H200 141GB makes this viable; keep KL/data/steps
+# matched to the multi-GPU kl01 science recipe.
+# Launch example:
+#   scripts/remote/job.sh sync-and-start gt-kl01 --gpus 0 -- \
+#     bash scripts/alab rl python -u src/rl/train_grpo.py --gpus 1 \
+#       --config configs/grpo/q3-8b_grpo_math_1gpu_h200_kl01.yaml \
+#       --reward-mode gt \
+#       --sft-ckpt hub:Arushhh/alab-q3-8b_sft_tulu_0705 \
+#       --run-id q3-8b_grpo-gt_math1h200_kl01
+
+model: Qwen/Qwen3-8B
+model_short: q3-8b
+sft_ckpt: null
+reward_mode: gt
+seed: 42
+sample_log_rate: 0.01
+
+data:
+  prompt_dataset: data/processed/rlvr_math.jsonl
+  data_tag: math
+  input_key: prompt
+  label_key: answer
+  apply_chat_template: true
+  max_samples: 100000
+
+grpo:
+  advantage_estimator: group_norm
+  n_samples_per_prompt: 8
+  kl_init_coef: 0.1
+  kl_use_loss: true
+  kl_estimator: k3
+
+rollout:
+  prompt_max_len: 4096
+  response_max_len: 8192
+  batch_size: 128
+  micro_batch_size: 8
+  temperature: 1.0
+  top_p: 1.0
+
+train:
+  batch_size: 128
+  micro_batch_size: 1
+  num_episodes: 1
+  max_epochs: 1
+  actor_lr: 1.0e-6
+  zero_stage: 3
+  colocate_all: true
+  packing_samples: true
+  gradient_checkpointing: true
+  max_tokens_per_gpu: 16384
+  ref_offload: true
+  adam_offload: true
+
+vllm:
+  num_engines: 1
+  tensor_parallel_size: 1
+  gpu_memory_utilization: 0.45
+  enforce_eager: false
+
+ckpt:
+  save_steps: -1
+  max_num: 1
+  save_hf: true

@@ -1,42 +1,91 @@
-# Runbook — AlignmentLab (IBM CCC / LSF)
+# Runbook — AlignmentLab
 
-All GPU work via `bsub`. Never run training/eval on the login node.
-Conda envs: `alab-rl` (GRPO), `alab-sft` (SFT), `alab-eval` (plots / some eval helpers).
-
-Host exclusions (Ray MetricsHead flake): `cccxc716`, `cccxc708`.
+Envs are **uv** (not conda): `rl` (GRPO), `sft` (TRL), `eval` (plots / harness).
+Runner: `scripts/alab <rl|sft|eval> <command...>`
 
 ---
 
-## Setup
+## H200 worker (preferred for new runs)
+
+Host: `anupam@169.38.10.80` · repo: `/data/anupam/AlignmentLab` · **8× H200**  
+Coding tools stay on your Mac (proprietary policy). Only sync + execute on the box.
+
+### One-time bootstrap (from Mac)
 
 ```bash
-cd /u/arushh/Arush/Project/AlignmentLab
-# envs from envs/*.yml if needed
-conda activate alab-rl   # or: conda run -n alab-rl ...
+# from local clone
+scripts/remote/bootstrap.sh          # SSH setup + rsync + uv sync all (+ flash-attn)
+scripts/remote/status.sh             # sanity: uv, venvs, GPUs, tmux
 ```
 
-Cluster knobs: `configs/cluster.yaml` (queue, scratch, hf_home).
+Persistent control session on the box: `tmux` session `alab-ctl` (created by bootstrap).
+
+### Everyday loop
+
+```bash
+# 1) edit locally on Mac
+# 2) push code (no commit required)
+scripts/remote/sync.sh               # rsync working tree
+#    or: scripts/remote/sync.sh --git   # after you git push
+
+# 3) start a long job in its own tmux session
+scripts/remote/job.sh sync-and-start smoke --gpus 0 -- \
+  bash scripts/local/ray_launch.sh \
+    --config configs/grpo/q3-8b_grpo_math_1gpu_h200_kl01.yaml \
+    --reward-mode gt --smoke
+
+# 4) monitor
+scripts/remote/job.sh status
+scripts/remote/job.sh logs smoke -f
+scripts/remote/job.sh attach smoke   # interactive tmux attach
+```
+
+Full gt arm example:
+
+```bash
+scripts/remote/job.sh sync-and-start gt-kl01 --gpus 0 -- \
+  bash scripts/local/ray_launch.sh \
+    --config configs/grpo/q3-8b_grpo_math_1gpu_h200_kl01.yaml \
+    --reward-mode gt \
+    --sft-ckpt hub:Arushhh/alab-q3-8b_sft_tulu_0705 \
+    --run-id q3-8b_grpo-gt_math1h200_kl01
+```
+
+Agent collaboration: the Mac agent can `sync` + `job.sh start/logs/status` over SSH; it never needs an IDE on the GPU box.
 
 ---
 
-## Download / preprocess data
+## uv setup (any machine)
 
 ```bash
-bash scripts/submit_download.sh   # or project-local data scripts under src/data/
+# install uv if needed: https://docs.astral.sh/uv/
+scripts/alab sync all --flash-attn   # creates .venv-rl .venv-sft .venv-eval
+scripts/alab which rl
+scripts/alab rl python -c "import openrlhf, vllm; print('ok')"
+```
+
+Do **not** `uv sync --all-extras` — sft and rl pin different `transformers` lines.
+
+Cluster knobs: `configs/cluster.yaml` (on H200 this is overwritten from `configs/cluster.h200.yaml` on sync).
+
+---
+
+## Data
+
+```bash
+scripts/alab sft python src/data/download.py --cluster-config configs/cluster.yaml
+scripts/alab sft python src/data/preprocess.py
 # Expected: data/processed/sft.jsonl, data/processed/rlvr_math.jsonl
 ```
 
 ---
 
-## Smoke test (1 GPU)
+## Smoke GRPO (local / H200)
 
 ```bash
-bash scripts/lsf/ray_lsf_launch.sh \
-  --smoke --gpus 1 --wall 01:00 \
-  --exclude-hosts cccxc716,cccxc708 \
-  --config configs/grpo/q3-8b_grpo_math_4gpu_test.yaml \
-  --reward-mode gt \
-  --sft-ckpt hub:Arushhh/alab-q3-8b_sft_tulu_0705
+bash scripts/local/ray_launch.sh \
+  --config configs/grpo/q3-8b_grpo_math_1gpu_h200_kl01.yaml \
+  --reward-mode gt --smoke
 ```
 
 ---
@@ -44,7 +93,8 @@ bash scripts/lsf/ray_lsf_launch.sh \
 ## SFT 8B
 
 ```bash
-bash scripts/submit_sft.sh   # see script for config path / run-id
+# CCC: bash scripts/submit_sft.sh
+# H200: use scripts/remote/job.sh + scripts/alab sft accelerate launch ...
 # Landed init: Arushhh/alab-q3-8b_sft_tulu_0705 (public)
 ```
 
@@ -54,92 +104,44 @@ Not implemented (`NotImplementedError`). Deferred until Phase 1 control battery 
 
 ---
 
-## GRPO 8B — current gt race (KL=0.1)
-
-Monitor only; first of three to RUN wins → `bkill` still-PEND losers:
-
-| job | GPUs | config | run-id |
-|---|---|---|---|
-| 951566 | 6 (4+2) | `configs/grpo/q3-8b_grpo_math_6gpu_kl01.yaml` | `q3-8b_grpo-gt_math6gpu_0712_kl01` |
-| 961251 | 5 (4+1) | `configs/grpo/q3-8b_grpo_math_5gpu_kl01.yaml` | `q3-8b_grpo-gt_math5gpu_0713_kl01` |
-| 1007448 | 4 (3+1) | `configs/grpo/q3-8b_grpo_math_4gpu_kl01.yaml` | `q3-8b_grpo-gt_math4gpu_0714_kl01` |
-
-```bash
-bjobs -w 951566 961251 1007448
-```
-
-### Resubmit after startup EXIT (Ray host flake only)
-
-```bash
-# 6-GPU example (increment run-id kl01 → kl01b)
-bash scripts/lsf/ray_lsf_launch.sh \
-  --gpus 6 --wall 96:00 \
-  --exclude-hosts cccxc716,cccxc708 \
-  --config configs/grpo/q3-8b_grpo_math_6gpu_kl01.yaml \
-  --reward-mode gt \
-  --sft-ckpt hub:Arushhh/alab-q3-8b_sft_tulu_0705 \
-  --run-id q3-8b_grpo-gt_math6gpu_0712_kl01b
-```
-
-### Rematch format / random (after successful gt eval)
-
-Exact recipes: [`docs/rq1_validity.md`](rq1_validity.md).
-
-### Health checks (RUN jobs)
-
-```bash
-# Liveness — trust this over quiet LSF .out (Ray dashboard EOF is often benign)
-stat -c '%y' results/runs/<RUN_ID>/samples.jsonl
-
-# TB scalars
-p=$(ls -td results/runs/<RUN_ID>/tb/* | head -1)
-conda run -n alab-rl python -c "
-from tensorboard.backend.event_processing import event_accumulator
-ea=event_accumulator.EventAccumulator('$p',size_guidance={'scalars':0});ea.Reload()
-for t in ['train/gt_accuracy','train/reward_mean','train/kl']:
-    if t in ea.Tags()['scalars']:
-        ev=ea.Scalars(t);print(t,[(e.step,round(e.value,4)) for e in ev[-5:]])"
-```
-
-KL-watch (steps ~100–150): success if KL ≲0.15 and accuracy holds; escalate if KL>~0.3
-with accuracy drop. Mid-run hang on non-colocated: diagnose, do **not** blind-resubmit.
-
----
-
 ## Evals
 
 ```bash
-scripts/submit_eval.sh --run-id <run_id> Arushhh/alab-<run_id> all
-# Outputs: results/evals/<run_id>/lm_eval.json, passk.json
+# Prefer wrapping in job.sh on H200; or CCC submit_eval.sh
+scripts/alab eval python -u src/evals/run_lm_eval.py --help
 ```
-
-Custom vLLM path writing harness-shaped JSON (not raw `lm-evaluation-harness` CLI).
-
----
 
 ## Collect + plot
 
 ```bash
 python scripts/collect_results.py
-conda run -n alab-eval python scripts/plot_arms.py
-# Updates results/summary.csv and docs/figs/
+scripts/alab eval python scripts/plot_arms.py
 ```
 
 ---
 
-## pass@k sweep
+## CCC / LSF (legacy path)
 
-Submitted via `submit_eval.sh` task-set `all` (includes pass@k). Tune limits with
-`--passk-limit` / `--passk-n-samples` on that script if needed.
+All GPU work via `bsub`. Never run training/eval on the login node.
+Host exclusions (Ray MetricsHead flake): `cccxc716`, `cccxc708`.
+
+```bash
+bash scripts/lsf/ray_lsf_launch.sh \
+  --gpus 4 --wall 96:00 \
+  --exclude-hosts cccxc716,cccxc708 \
+  --config configs/grpo/q3-8b_grpo_math_4gpu_kl01.yaml \
+  --reward-mode gt \
+  --sft-ckpt hub:Arushhh/alab-q3-8b_sft_tulu_0705
+```
+
+Health checks: `samples.jsonl` mtime; TensorBoard `train/gt_accuracy`, `train/kl`.
+Validity / rematch: [`docs/rq1_validity.md`](rq1_validity.md).
 
 ---
 
 ## Hard rules
 
-- Never login-node GPU compute.
-- Never kill healthy jobs (exception: race-loser still PEND).
+- No coding assistants / IDE agents on the H200 host — sync from Mac only.
+- Never kill healthy jobs (exception: race-loser still PEND on LSF).
 - No git commit/push unless user asks in-session.
-- Pending jobs read `reward.py` / launch scripts from disk at launch — keep reward
-  **values** behavior-preserving while race is PEND.
 - Validity / rematch: [`docs/rq1_validity.md`](rq1_validity.md).
-- Live loop state: [`results/logs/rl/LOOP_CONTEXT.md`](../results/logs/rl/LOOP_CONTEXT.md).

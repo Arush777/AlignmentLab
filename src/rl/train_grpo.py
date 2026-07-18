@@ -31,7 +31,7 @@ import time
 try:
     import yaml
 except ImportError:  # pragma: no cover
-    print("ERROR: PyYAML required (conda run -n alab-rl ...).", file=sys.stderr)
+    print("ERROR: PyYAML required (scripts/alab rl python ...).", file=sys.stderr)
     raise
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))

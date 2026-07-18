@@ -11,3 +11,12 @@ checkpoints/
 results/logs/
 results/runs/*/logs/
 results/evals/*/passk_samples.jsonl
+.venv/
+.venv-rl/
+.venv-sft/
+.venv-eval/
+uv.lock
+results/remote_jobs/*.log
+results/remote_jobs/*.run.sh
+results/remote_jobs/*.argv.b64
+results/remote_jobs/*.meta.env

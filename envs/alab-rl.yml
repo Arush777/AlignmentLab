@@ -1,33 +1,4 @@
-# alab-rl — OpenRLHF GRPO (Ray + vLLM) training environment (Track A / Sonnet)
-#
-# Pins are derived from the vendored OpenRLHF setup (third_party/OpenRLHF):
-#   version.txt      -> 0.10.4
-#   setup.py         -> extras["vllm"] == "vllm==0.22.1"
-#   requirements.txt -> transformers==5.7.0, deepspeed==0.19.1, ray[default]==2.55.0,
-#                       flash-attn==2.8.3, huggingface_hub>=1.0.0, pynvml>=12
-# Installing `openrlhf[vllm]==0.10.4` resolves that whole stack (torch is pinned
-# transitively by vllm==0.22.1 — do NOT pin torch here or you will fight the resolver).
-#
-# flash-attn builds against an already-installed torch, so it is installed in a
-# SECOND step (see the two-liner at the bottom) with --no-build-isolation.
-#
-# Create (login node, has internet; compute nodes may not):
-#   conda env create -f envs/alab-rl.yml
-#   conda run -n alab-rl pip install --no-build-isolation flash-attn==2.8.3
-name: alab-rl
-channels:
-  - conda-forge
-dependencies:
-  - python=3.11
-  - pip
-  - git
-  - pip:
-      # Core RL stack — extra pulls vllm==0.22.1 + transformers/deepspeed/ray pins.
-      - openrlhf[vllm]==0.10.4
-      # Verifiable-reward grading for reward_mode=gt (also used by the eval env).
-      - math-verify==0.7.0
-      - latex2sympy2_extended==1.0.6
-      # Logging (openrlhf pulls wandb, kept explicit; offline until wandb_entity set).
-      - wandb
-      # NOTE: install flash-attn==2.8.3 AFTER this env exists, with:
-      #   conda run -n alab-rl pip install --no-build-isolation flash-attn==2.8.3
+# DEPRECATED — use pyproject.toml + `scripts/alab sync` (uv).
+# Kept only as a pointer for old CCC docs.
+#   scripts/alab sync rl --flash-attn
+name: DEPRECATED-use-uv-alab-rl

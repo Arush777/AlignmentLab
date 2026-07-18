@@ -23,7 +23,7 @@ set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CLUSTER_YAML="${REPO}/configs/cluster.yaml"
-CONDA_ENV="alab-rl"
+UV_ENV="rl"
 
 # --- tiny YAML scalar reader (flat `key: "value"` / `key: value`) -----------------
 yget() {
@@ -190,7 +190,7 @@ for ((i = 0; i < ${#FORWARD[@]}; i++)); do
 
   sft_dest="${ALAB_NODE_TMP}/sft_init"
   echo "Fetching --sft-ckpt Hub repo ${sft_repo} into ${sft_dest}"
-  if ! fetch_out="$(cd "${REPO}" && HF_HUB_OFFLINE=0 conda run -n "${CONDA_ENV}" bash scripts/fetch_hub_ckpt.sh "${sft_repo}" "${sft_dest}")"; then
+  if ! fetch_out="$(cd "${REPO}" && HF_HUB_OFFLINE=0 "${REPO}/scripts/alab" "${UV_ENV}" bash scripts/fetch_hub_ckpt.sh "${sft_repo}" "${sft_dest}")"; then
     echo "ERROR: failed to fetch --sft-ckpt Hub repo ${sft_repo} into ${sft_dest}" >&2
     if [[ -n "${fetch_out:-}" ]]; then
       printf '%s\n' "${fetch_out}" >&2
@@ -233,7 +233,7 @@ mkdir -p "${RAY_TMP}"
 
 cleanup() {
   echo "=== tearing down Ray (job ${LSB_JOBID}) ==="
-  conda run -n "${CONDA_ENV}" ray stop --force >/dev/null 2>&1 || true
+  "${REPO}/scripts/alab" "${UV_ENV}" ray stop --force >/dev/null 2>&1 || true
   if [[ -d "${ALAB_NODE_TMP}" ]]; then
     if find "${ALAB_NODE_TMP}" -name .keep -print -quit | grep -q .; then
       echo "Preserving ${ALAB_NODE_TMP} because a .keep sentinel was found" >&2
@@ -249,7 +249,7 @@ trap cleanup EXIT INT TERM
 # workers see reward.py's defaults and ALL arms silently run `gt` (samples land in
 # results/runs/unknown/). Diagnostics from --emit-env go to stderr; stdout is KEY=VALUE.
 echo "Resolving reward env (train_grpo.py --emit-env)..."
-ENV_LINES="$(conda run -n "${CONDA_ENV}" python -u "${REPO}/src/rl/train_grpo.py" \
+ENV_LINES="$("${REPO}/scripts/alab" "${UV_ENV}" python -u "${REPO}/src/rl/train_grpo.py" \
              --emit-env --gpus "${NGPU}" "${FORWARD[@]}")" \
   || { echo "ERROR: --emit-env failed" >&2; exit 1; }
 while IFS= read -r kv; do
@@ -258,7 +258,7 @@ done <<< "${ENV_LINES}"
 echo "Reward env: ALAB_REWARD_MODE=${ALAB_REWARD_MODE:-?} ALAB_RUN_ID=${ALAB_RUN_ID:-?}"
 
 echo "Starting Ray head at ${HEAD_IP}:${RAY_PORT} (tmp ${RAY_TMP})"
-conda run -n "${CONDA_ENV}" ray start --head \
+"${REPO}/scripts/alab" "${UV_ENV}" ray start --head \
   --node-ip-address="${HEAD_IP}" \
   --port="${RAY_PORT}" \
   --num-gpus="${NGPU}" \
@@ -278,7 +278,7 @@ if [[ "${NHOSTS}" -gt 1 ]]; then
   for h in ${UNIQ_HOSTS}; do
     [[ "${h}" == "$(hostname)" ]] && continue
     echo "  blaunch Ray worker on ${h}"
-    blaunch -z "${h}" conda run -n "${CONDA_ENV}" ray start \
+    blaunch -z "${h}" "${REPO}/scripts/alab" "${UV_ENV}" ray start \
       --address="${RAY_ADDRESS}" --num-gpus="${NGPU}" --temp-dir="${RAY_TMP}" &
   done
 fi
@@ -286,7 +286,7 @@ fi
 # --- wait for Ray readiness -------------------------------------------------------
 echo "Waiting for Ray to become ready..."
 for i in $(seq 1 30); do
-  if conda run -n "${CONDA_ENV}" ray status >/dev/null 2>&1; then
+  if "${REPO}/scripts/alab" "${UV_ENV}" ray status >/dev/null 2>&1; then
     echo "Ray is ready (after ${i} checks)."
     break
   fi
@@ -297,5 +297,5 @@ done
 # --- exec the GRPO entrypoint (connects to the existing Ray via RAY_ADDRESS) ------
 echo "=== launching train_grpo.py ==="
 set -x
-conda run -n "${CONDA_ENV}" python -u "${REPO}/src/rl/train_grpo.py" \
+"${REPO}/scripts/alab" "${UV_ENV}" python -u "${REPO}/src/rl/train_grpo.py" \
   --gpus "${NGPU}" --run-id "${ALAB_RUN_ID}" "${FORWARD[@]}"

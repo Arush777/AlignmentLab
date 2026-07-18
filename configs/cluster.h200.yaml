@@ -1,0 +1,9 @@
+# H200 worker (anupam@169.38.10.80). Copied over configs/cluster.yaml by
+# scripts/remote/bootstrap.sh and scripts/remote/sync.sh.
+# 8x NVIDIA H200, shared host — pin CUDA_VISIBLE_DEVICES via scripts/remote/job.sh --gpus.
+queue: "local"
+gpu_type: "h200"
+gpus_per_node: 8
+scratch: "/data/anupam/AlignmentLab/scratch"
+wandb_entity: "arushsharma536-spe-iit"
+hf_home: "/data/anupam/.cache/huggingface"

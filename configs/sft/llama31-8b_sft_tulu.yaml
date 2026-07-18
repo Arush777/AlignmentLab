@@ -4,7 +4,7 @@ run_id: llama31-8b_sft_tulu_0715
 model_name_or_path: meta-llama/Llama-3.1-8B
 dataset_path: data/processed/sft.jsonl
 seed: 42
-conda_env: alab-sft
+uv_env: sft
 hub_repo_id: Arushhh/alab-llama31-8b_sft_tulu_0715
 hub_private: false
 

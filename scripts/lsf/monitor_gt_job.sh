@@ -60,8 +60,8 @@ case "${STAT}" in
     fi
     # Light TB peek if events exist (alab-rl; skip if conda missing)
     TB="$(ls -td "${REPO}/results/runs/${RUN_ID}/tb"/* 2>/dev/null | head -1 || true)"
-    if [[ -n "${TB}" ]] && command -v conda >/dev/null 2>&1; then
-      conda run -n alab-rl python - <<PY >> "${STATE_DIR}/health.log" 2>/dev/null || true
+    if [[ -n "${TB}" ]] && command -v uv >/dev/null 2>&1; then
+      "${REPO}/scripts/alab" rl python - <<PY >> "${STATE_DIR}/health.log" 2>/dev/null || true
 from tensorboard.backend.event_processing import event_accumulator
 ea=event_accumulator.EventAccumulator("${TB}", size_guidance={"scalars":0})
 ea.Reload()

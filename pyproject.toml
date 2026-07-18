@@ -1,0 +1,58 @@
+[project]
+name = "alignmentlab"
+version = "0.1.0"
+description = "Compute-matched RLVR control battery (SFT / DPO / GRPO)"
+readme = "README.md"
+requires-python = "==3.11.*"
+license = { text = "Apache-2.0" }
+dependencies = [
+  "pyyaml>=6.0",
+]
+
+# Separate venvs per group (.venv-rl / .venv-sft / .venv-eval).
+# Do not sync multiple GPU stacks into one env: sft pins transformers 4.x, rl pins 5.7.
+[dependency-groups]
+rl = [
+  "openrlhf[vllm]==0.10.4",
+  "math-verify==0.7.0",
+  "wandb",
+  "tensorboard",
+]
+sft = [
+  "torch==2.7.1",
+  "transformers==4.57.1",
+  "trl==0.24.0",
+  "accelerate==1.11.0",
+  "deepspeed==0.19.1",
+  "peft==0.18.0",
+  "datasets==4.4.0",
+  "bitsandbytes==0.48.1",
+  "sentencepiece",
+  "wandb",
+]
+eval = [
+  "lm-eval[vllm]==0.4.9.1",
+  "vllm==0.22.1",
+  "math-verify==0.7.0",
+  "datasets>=2.16.0,<4.0",
+  "wandb",
+  "matplotlib",
+]
+dev = [
+  "pytest>=8.0",
+]
+
+[tool.uv]
+package = false
+default-groups = []
+conflicts = [
+  [
+    { group = "rl" },
+    { group = "sft" },
+    { group = "eval" },
+  ],
+]
+no-build-isolation-package = ["flash-attn"]
+
+[tool.uv.extra-build-dependencies]
+flash-attn = ["torch"]

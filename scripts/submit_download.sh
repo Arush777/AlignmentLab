@@ -11,7 +11,7 @@ Submits one CPU LSF job that:
   2. preprocesses data/processed/*.jsonl offline
 
 Environment overrides:
-  CONDA_ENV=alab-sft   Conda env used through conda run -n
+  UV_ENV=sft   uv env via scripts/alab (was conda alab-sft)
   PREPROCESS=1         Set PREPROCESS=0 to cache only
   WALL=12:00           LSF wall time
   N_CPUS=8             CPU slots
@@ -76,7 +76,7 @@ QUEUE="$(yaml_get "${CLUSTER_CONFIG}" queue normal)"
 SCRATCH="$(yaml_get "${CLUSTER_CONFIG}" scratch /u/arushh/alignmentlab_scratch)"
 HF_HOME_CFG="$(yaml_get "${CLUSTER_CONFIG}" hf_home /u/arushh/.cache/huggingface)"
 WANDB_ENTITY="$(yaml_get "${CLUSTER_CONFIG}" wandb_entity CHANGE_ME)"
-CONDA_ENV="${CONDA_ENV:-alab-sft}"
+UV_ENV="${UV_ENV:-sft}"
 RUN_ID="download_preprocess_$(date +%m%d)"
 RUN_DIR="${REPO}/results/runs/${RUN_ID}"
 LOG_DIR="${RUN_DIR}/logs"
@@ -92,10 +92,10 @@ submit_job() {
   local cmd="cd ${REPO} && \
 source scripts/lsf/env.sh && \
 export ALAB_SCRATCH=${SCRATCH} HF_HOME=${HF_HOME_CFG} WANDB_ENTITY=${WANDB_ENTITY} && \
-conda run -n ${CONDA_ENV} python src/data/download.py --cluster-config configs/cluster.yaml ${DOWNLOAD_ARGS:-}"
+${REPO}/scripts/alab ${UV_ENV} python src/data/download.py --cluster-config configs/cluster.yaml ${DOWNLOAD_ARGS:-}"
 
   if [ "${PREPROCESS}" = "1" ]; then
-    cmd="${cmd} && export HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 && conda run -n ${CONDA_ENV} python src/data/preprocess.py"
+    cmd="${cmd} && export HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 && ${REPO}/scripts/alab ${UV_ENV} python src/data/preprocess.py"
   fi
 
   echo "run_id=${RUN_ID}"

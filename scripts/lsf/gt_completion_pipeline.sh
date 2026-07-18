@@ -75,7 +75,7 @@ fi
 
 if ! have collected; then
   python scripts/collect_results.py >> "${LOG}" 2>&1 || true
-  conda run -n alab-eval python scripts/plot_arms.py >> "${LOG}" 2>&1 || true
+  "${REPO}/scripts/alab" eval python scripts/plot_arms.py >> "${LOG}" 2>&1 || true
   mark collected
   log "OK collect/plot"
 fi

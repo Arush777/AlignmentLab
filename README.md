@@ -14,32 +14,29 @@ Runs are logged to Weights & Biases (public project `alignmentlab`).
 - **RQ2:** Does GRPO/RLVR raise pass@1 on math while *lowering* pass@k (k up to 256)? (sharpening vs learning)
 - **RQ3:** Preference-data ablation: UltraFeedback vs HelpSteer2 vs 50/50 mix at fixed N pairs (DPO).
 
+## Quickstart
+- **Local / CCC:** `scripts/alab sync all --flash-attn` then see [`docs/RUNBOOK.md`](docs/RUNBOOK.md).
+- **H200 worker** (`anupam@169.38.10.80:/data/anupam/AlignmentLab`): code on Mac → `scripts/remote/sync.sh` → `scripts/remote/job.sh` (tmux). See RUNBOOK § H200.
+
 ## Repo structure
 ```
 AlignmentLab/
-├── PLAN.md  README.md  LICENSE  .gitignore
-├── envs/                  # conda env yml per env: alab-sft.yml, alab-rl.yml, alab-eval.yml
+├── PLAN.md  README.md  LICENSE  pyproject.toml
+├── envs/                  # deprecated conda stubs → use uv extras in pyproject.toml
 ├── configs/
-│   ├── sft/  dpo/  grpo/  # one YAML per experiment (see run-ID convention)
-│   └── cluster.yaml       # queue name, gpu type, scratch path, wandb entity
+│   ├── sft/  dpo/  grpo/  # one YAML per experiment
+│   ├── cluster.yaml       # active cluster (CCC or copied from cluster.h200.yaml)
+│   └── cluster.h200.yaml  # H200 worker paths
 ├── src/
-│   ├── data/              # download + preprocess (Codex)
-│   ├── train/             # TRL SFT/DPO entrypoints (Codex)
-│   ├── rl/                # OpenRLHF GRPO launch + reward fn (Sonnet)
-│   └── evals/             # lm-eval orchestration + pass@k harness (Codex)
+│   ├── data/  train/  rl/  evals/
 ├── scripts/
-│   ├── lsf/               # bsub templates (GLM), ray_lsf launcher (Sonnet)
-│   └── submit_*.sh        # one submitter per experiment type (Codex)
-├── data/                  # raw/ processed/ (gitignored)
-├── results/
-│   ├── runs/<run_id>/     # config.yaml, metrics.json, lsf.log
-│   └── evals/<run_id>/    # lm_eval.json, passk.json
-├── docs/                  # experiment cards, report draft (GLM)
-└── third_party/           # cloned repos (gitignored)
+│   ├── alab               # uv env runner (rl|sft|eval)
+│   ├── remote/            # Mac→H200 sync + tmux jobs
+│   ├── local/ray_launch.sh
+│   ├── lsf/               # CCC bsub / Ray-on-LSF
+│   └── submit_*.sh
+├── data/  results/  docs/
 ```
-
-## Quickstart
-See [`docs/RUNBOOK.md`](docs/RUNBOOK.md).
 
 ## Results
 

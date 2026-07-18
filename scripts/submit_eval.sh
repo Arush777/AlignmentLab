@@ -87,7 +87,7 @@ PASSK_LIMIT=""
 PASSK_N_SAMPLES="${PASSK_N_SAMPLES:-256}"
 PASSK_K_VALUES="${PASSK_K_VALUES:-1,8,64,256}"
 WALL="${WALL:-06:00}"
-CONDA_ENV="${CONDA_ENV:-alab-eval}"
+UV_ENV="${UV_ENV:-eval}"
 N_CPUS="${N_CPUS:-8}"
 MEM="${MEM:-96G}"
 MAX_NEW_TOKENS="${MAX_NEW_TOKENS:-2048}"
@@ -104,7 +104,7 @@ while [ "$#" -gt 0 ]; do
     --passk-n-samples) PASSK_N_SAMPLES="$2"; shift 2 ;;
     --passk-k-values) PASSK_K_VALUES="$2"; shift 2 ;;
     --wall) WALL="$2"; shift 2 ;;
-    --conda-env) CONDA_ENV="$2"; shift 2 ;;
+    --uv-env) UV_ENV="$2"; shift 2 ;;
     --max-new-tokens) MAX_NEW_TOKENS="$2"; shift 2 ;;
     --max-model-len) MAX_MODEL_LEN="$2"; shift 2 ;;
     --gpu-memory-utilization) GPU_MEM_UTIL="$2"; shift 2 ;;
@@ -183,7 +183,7 @@ shell_quote() {
 }
 
 emit_job_script() {
-  local q_repo q_model q_run_id q_out q_scratch q_hf_home q_wandb_entity q_conda_env
+  local q_repo q_model q_run_id q_out q_scratch q_hf_home q_wandb_entity q_uv_env
   q_repo="$(shell_quote "${REPO}")"
   q_model="$(shell_quote "${MODEL}")"
   q_run_id="$(shell_quote "${RUN_ID}")"
@@ -191,7 +191,7 @@ emit_job_script() {
   q_scratch="$(shell_quote "${SCRATCH}")"
   q_hf_home="$(shell_quote "${HF_HOME_CFG}")"
   q_wandb_entity="$(shell_quote "${WANDB_ENTITY}")"
-  q_conda_env="$(shell_quote "${CONDA_ENV}")"
+  q_uv_env="$(shell_quote "${UV_ENV}")"
 
   cat <<EOF
 #!/bin/bash
@@ -228,7 +228,7 @@ else
   EVAL_MODEL_DEST="\${EVAL_NODE_TMP}/model"
   mkdir -p "\${EVAL_MODEL_DEST}"
   echo "Fetching eval model Hub repo \${MODEL_INPUT} into \${EVAL_MODEL_DEST}"
-  if ! fetch_out="\$(HF_HUB_OFFLINE=0 conda run -n ${q_conda_env} bash scripts/fetch_hub_ckpt.sh "\${MODEL_INPUT}" "\${EVAL_MODEL_DEST}")"; then
+  if ! fetch_out="\$(HF_HUB_OFFLINE=0 ${q_repo}/scripts/alab ${q_uv_env} bash scripts/fetch_hub_ckpt.sh "\${MODEL_INPUT}" "\${EVAL_MODEL_DEST}")"; then
     echo "ERROR: failed to fetch eval model Hub repo \${MODEL_INPUT} into \${EVAL_MODEL_DEST}" >&2
     if [ -n "\${fetch_out:-}" ]; then
       printf '%s\n' "\${fetch_out}" >&2
@@ -253,7 +253,7 @@ EOF
       limit_arg=" --limit $(shell_quote "${LIMIT}")"
     fi
     cat <<EOF
-conda run -n ${q_conda_env} python -u src/evals/run_lm_eval.py \\
+${q_repo}/scripts/alab ${q_uv_env} python -u src/evals/run_lm_eval.py \\
   --model "\${MODEL_FOR_EVAL}" \\
   --run-id ${q_run_id} \\
   --tasks ${q_lm_tasks} \\
@@ -271,7 +271,7 @@ EOF
       passk_limit_arg=" --limit $(shell_quote "${PASSK_LIMIT}")"
     fi
     cat <<EOF
-conda run -n ${q_conda_env} python -u src/evals/passk_generate.py \\
+${q_repo}/scripts/alab ${q_uv_env} python -u src/evals/passk_generate.py \\
   --model "\${MODEL_FOR_EVAL}" \\
   --run-id ${q_run_id} \\
   --output-dir ${q_out} \\
@@ -282,7 +282,7 @@ conda run -n ${q_conda_env} python -u src/evals/passk_generate.py \\
   --gpu-memory-utilization ${GPU_MEM_UTIL} \\
   --overwrite${passk_limit_arg}
 
-conda run -n ${q_conda_env} python -u src/evals/passk_score.py \\
+${q_repo}/scripts/alab ${q_uv_env} python -u src/evals/passk_score.py \\
   --run-id ${q_run_id} \\
   --input ${q_out}/passk_samples.jsonl \\
   --output ${q_out}/passk.json \\

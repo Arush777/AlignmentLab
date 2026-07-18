@@ -2,7 +2,7 @@ run_id: q3-0.6b_sft_smoke_0705
 model_name_or_path: Qwen/Qwen3-0.6B
 dataset_path: data/processed/sft.jsonl
 seed: 42
-conda_env: alab-sft
+uv_env: sft
 
 resources:
   n_gpus: 1

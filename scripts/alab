@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+# AlignmentLab environment runner (uv).
+#
+# Usage:
+#   scripts/alab rl python -u src/rl/train_grpo.py --help
+#   scripts/alab sft accelerate launch --num_processes 1 src/train/sft.py --config ...
+#   scripts/alab eval python scripts/plot_arms.py
+#   scripts/alab sync [rl|sft|eval|all] [--flash-attn]
+#   scripts/alab which rl
+#
+# Venvs live at .venv-rl / .venv-sft / .venv-eval (mutually incompatible stacks).
+set -euo pipefail
+
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "${REPO}"
+
+usage() {
+  sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+  exit "${1:-0}"
+}
+
+resolve_venv() {
+  case "$1" in
+    rl|sft|eval) echo "${REPO}/.venv-$1" ;;
+    *)
+      echo "Unknown env '$1' (want: rl|sft|eval)" >&2
+      exit 2
+      ;;
+  esac
+}
+
+sync_one() {
+  local env="$1"
+  local with_flash="${2:-0}"
+  local venv
+  venv="$(resolve_venv "${env}")"
+  echo "=== uv sync → ${venv} (group: ${env}) ==="
+  # Install the stack first without compiling flash-attn, then optionally add it
+  # with --no-build-isolation once torch is present in the venv.
+  UV_PROJECT_ENVIRONMENT="${venv}" uv sync --python 3.11 \
+    --group "${env}" --group dev --no-install-project \
+    --no-install-package flash-attn
+  if [[ "${with_flash}" == "1" && "${env}" != "eval" ]]; then
+    echo "=== flash-attn into ${venv} (no-build-isolation) ==="
+    UV_PROJECT_ENVIRONMENT="${venv}" uv pip install --no-build-isolation "flash-attn==2.8.3"
+  else
+    echo "(skipping flash-attn; pass --flash-attn to build it)"
+  fi
+}
+
+cmd="${1:-}"
+[[ -n "${cmd}" ]] || usage 2
+shift || true
+
+case "${cmd}" in
+  -h|--help|help) usage 0 ;;
+  sync)
+    target="${1:-all}"
+    shift || true
+    with_flash=0
+    for a in "$@"; do
+      case "$a" in
+        --flash-attn) with_flash=1 ;;
+        *) echo "Unknown sync flag: $a" >&2; exit 2 ;;
+      esac
+    done
+    case "${target}" in
+      all)
+        for e in rl sft eval; do sync_one "$e" "${with_flash}"; done
+        ;;
+      rl|sft|eval)
+        sync_one "${target}" "${with_flash}"
+        ;;
+      *)
+        echo "sync target must be rl|sft|eval|all" >&2
+        exit 2
+        ;;
+    esac
+    ;;
+  which)
+    env="${1:?env name required}"
+    venv="$(resolve_venv "${env}")"
+    if [[ -x "${venv}/bin/python" ]]; then
+      echo "${venv}/bin/python"
+      "${venv}/bin/python" -V
+    else
+      echo "missing ${venv} — run: scripts/alab sync ${env}" >&2
+      exit 1
+    fi
+    ;;
+  rl|sft|eval)
+    env="${cmd}"
+    venv="$(resolve_venv "${env}")"
+    if [[ ! -x "${venv}/bin/python" ]]; then
+      echo "missing ${venv} — run: scripts/alab sync ${env}" >&2
+      exit 1
+    fi
+    if [[ $# -eq 0 ]]; then
+      echo "usage: scripts/alab ${env} <command> [args...]" >&2
+      exit 2
+    fi
+    export PATH="${venv}/bin:${PATH}"
+    export VIRTUAL_ENV="${venv}"
+    export UV_PROJECT_ENVIRONMENT="${venv}"
+    exec "$@"
+    ;;
+  *)
+    echo "Unknown command: ${cmd}" >&2
+    usage 2
+    ;;
+esac
