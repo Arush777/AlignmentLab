@@ -32,6 +32,24 @@ export ALAB_HUB_PUSH="${ALAB_HUB_PUSH:-1}"
 export DS_SKIP_CUDA_CHECK="${DS_SKIP_CUDA_CHECK:-1}"
 mkdir -p "${ALAB_SCRATCH}" "${ALAB_NODE_TMP}" results/runs
 
+# OpenRLHF/DeepSpeed default to FusedAdam JIT, which fails to build against the
+# torch 2.11 + system nvcc combo on this host. Force torch.optim.AdamW instead.
+"${ALAB}" rl python - <<'PY'
+from pathlib import Path
+import openrlhf
+p = Path(openrlhf.__file__).resolve().parent / "utils/deepspeed/deepspeed.py"
+text = p.read_text()
+needle = '"weight_decay": adam["weight_decay"],\n                },\n            }'
+insert = '"weight_decay": adam["weight_decay"],\n                    "torch_adam": True,\n                },\n            }'
+if "torch_adam" in text:
+    print("[ray_launch] openrlhf already uses torch_adam")
+elif needle in text:
+    p.write_text(text.replace(needle, insert, 1))
+    print(f"[ray_launch] patched torch_adam into {p}")
+else:
+    print(f"[ray_launch] WARNING: could not patch torch_adam in {p}")
+PY
+
 # Rewrite hub: SFT ckpts to local paths
 RESOLVED=()
 i=0
