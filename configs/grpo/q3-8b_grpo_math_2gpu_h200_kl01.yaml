@@ -54,8 +54,11 @@ train:
   packing_samples: true
   gradient_checkpointing: true
   max_tokens_per_gpu: 8192
-  ref_offload: false
-  adam_offload: false
+  # 1 train GPU cannot hold policy+ref+Adam on-device (OOM at optimizer.step
+  # on first attempt q3-8b_grpo-gt_math2h200_kl01). Offload like 1gpu_h200;
+  # ray_launch patches DeepSpeed to torch_adam (CPUAdam broken on this host).
+  ref_offload: true
+  adam_offload: true
 
 vllm:
   num_engines: 1
