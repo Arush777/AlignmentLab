@@ -28,6 +28,8 @@ export HF_HOME="${HF_HOME:-/data/anupam/.cache/huggingface}"
 export ALAB_NODE_TMP="${ALAB_NODE_TMP:-/tmp/alab_${$}}"
 export ALAB_NODE_LOCAL="${ALAB_NODE_LOCAL:-1}"
 export ALAB_HUB_PUSH="${ALAB_HUB_PUSH:-1}"
+# DeepSpeedCUDA check / CPU-Adam mismatch under some torch builds
+export DS_SKIP_CUDA_CHECK="${DS_SKIP_CUDA_CHECK:-1}"
 mkdir -p "${ALAB_SCRATCH}" "${ALAB_NODE_TMP}" results/runs
 
 # Rewrite hub: SFT ckpts to local paths

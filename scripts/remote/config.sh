@@ -19,11 +19,17 @@ alab_rsync() {
     --exclude '__pycache__/' \
     --exclude '.pytest_cache/' \
     --exclude 'wandb/' \
-    --exclude 'data/raw/' \
-    --exclude 'data/processed/' \
-    --exclude 'results/runs/*/samples.jsonl' \
-    --exclude 'results/evals/*/passk_samples.jsonl' \
+    --exclude 'data/' \
+    --exclude 'scratch/' \
+    --exclude 'results/runs/' \
+    --exclude 'results/evals/' \
+    --exclude 'results/remote_jobs/*.log' \
+    --exclude 'results/remote_jobs/*.run.sh' \
+    --exclude 'results/remote_jobs/*.argv.b64' \
+    --exclude 'results/remote_jobs/*.meta' \
+    --exclude 'results/remote_jobs/*.meta.env' \
     --exclude 'third_party/' \
+    --exclude 'uv.lock' \
     --exclude '.env' \
     "$@"
 }
