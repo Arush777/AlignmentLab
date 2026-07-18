@@ -90,21 +90,43 @@ def test_gt_arm_correct_and_wrong():
 
 
 def test_is_correct_from_worker_thread():
-    """Regression: math_verify signal.alarm must not fire in a worker thread."""
+    """Regression: math_verify signal.alarm must not fire in a worker thread.
+
+    math-verify 0.7's parsing_timeout=None does NOT disable alarms — it makes
+    parse return []. The reward module must patch timeout to a no-op so gt
+    scoring works under OpenRLHF's remote-reward worker threads.
+    """
     r = _load_reward("gt")
+    assert r._MV is not None, "math-verify required for this regression test"
     result = {}
+    err = {}
 
     def worker():
-        result["ok"] = r._is_correct(r"\\boxed{3}", "3")
-        result["bad"] = r._is_correct(r"\\boxed{9}", "3")
+        try:
+            result["ok"] = r._is_correct(r"The answer is \boxed{3}", "3")
+            result["bad"] = r._is_correct(r"The answer is \boxed{9}", "3")
+            out = r.reward_func(
+                queries=[r"p\n\boxed{42}", r"p\n\boxed{0}"],
+                prompts=["p\n", "p\n"],
+                labels=["42", "42"],
+            )
+            result["rewards"] = out["rewards"].tolist()
+            result["gt_acc"] = float(out["extra_logs"]["gt_accuracy"])
+            result["empty"] = float(out["extra_logs"]["empty_parse_rate"])
+        except Exception as e:  # noqa: BLE001 — surface to main thread
+            err["exc"] = e
 
     t = threading.Thread(target=worker)
     t.start()
     t.join(timeout=30)
     assert not t.is_alive(), "worker thread hung"
-    # If math_verify unavailable, string fallback may still work via boxed extract.
-    assert result["ok"] is True or result["ok"] is False  # ran without raising
-    assert result["bad"] is False or result["ok"] is True
+    assert not err, f"worker raised: {err.get('exc')}"
+    assert result["ok"] is True
+    assert result["bad"] is False
+    assert result["rewards"][0] >= 1.0
+    assert result["rewards"][1] < 1.0
+    assert result["gt_acc"] == 0.5
+    assert result["empty"] == 0.0
 
 
 def test_parse_fail_logging_does_not_change_reward_shape():
@@ -116,6 +138,7 @@ def test_parse_fail_logging_does_not_change_reward_shape():
     )
     assert out["rewards"].shape == (1,)
     assert float(out["extra_logs"]["parse_fail_rate"]) >= 0.0
+    assert "empty_parse_rate" in out["extra_logs"]
 
 
 if __name__ == "__main__":

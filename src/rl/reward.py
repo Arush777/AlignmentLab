@@ -49,8 +49,45 @@ SAMPLES_PATH = os.path.join(RESULTS_DIR, RUN_ID, "samples.jsonl")
 
 # math-verify is required for `gt`; import lazily so `random`/`format` never need it.
 _MV = None
+_grade_answer = None
+
+
+def _patch_math_verify_timeout() -> None:
+    """Disable math-verify's signal.alarm timeouts (required for OpenRLHF worker threads).
+
+    math-verify 0.7 wraps parse/verify in ``utils.timeout``, which calls
+    ``signal.alarm``. That only works on the main thread. OpenRLHF runs
+    ``reward_func`` in a worker thread, so every parse raised and — in older
+    math-verify — was swallowed into False. Passing ``parsing_timeout=None``
+    does **not** disable the wrapper in 0.7: it still calls ``signal.alarm(None)``
+    (TypeError), which parse catches internally and returns ``[]``. Result:
+    gt_accuracy stuck at 0 while format bonus still pays (soft format arm).
+
+    Patch the timeout factory to a no-op in utils + the parser/grader aliases
+    that already bound the name at import time.
+    """
+    import math_verify.grader as mv_grader
+    import math_verify.parser as mv_parser
+    import math_verify.utils as mv_utils
+
+    if getattr(mv_utils, "_alab_timeout_disabled", False):
+        return
+
+    def _noop_timeout(timeout_seconds: int = 10):  # noqa: ARG001
+        def decorator(func):
+            return func
+
+        return decorator
+
+    mv_utils.timeout = _noop_timeout
+    mv_parser.timeout = _noop_timeout
+    mv_grader.timeout = _noop_timeout
+    mv_utils._alab_timeout_disabled = True
+
+
 if REWARD_MODE == "gt":
     try:
+        _patch_math_verify_timeout()
         from math_verify import parse as _mv_parse, verify as _mv_verify
 
         _MV = (_mv_parse, _mv_verify)
@@ -104,8 +141,11 @@ def _extract_boxed(text: str):
 # Parse-failure telemetry (logging only — does NOT change reward values).
 # OpenRLHF once swallowed every math_verify thread error into False; this makes
 # silent zeros visible via train/parse_fail_rate without altering scoring.
+# empty_parse_rate covers the math-verify-0.7 path where parse catches timeout
+# errors internally and returns [] (never raises into our except).
 _PARSE_FAIL_LOCK = threading.Lock()
 _PARSE_FAIL_COUNT = 0
+_EMPTY_PARSE_COUNT = 0
 _PARSE_FAIL_LOG_EVERY = int(os.environ.get("ALAB_PARSE_FAIL_LOG_EVERY", "50"))
 
 
@@ -122,6 +162,16 @@ def _record_parse_fail(exc: BaseException) -> None:
         )
 
 
+def _record_empty_parse() -> None:
+    """Count silent empty parse results (math-verify returned [] without raising)."""
+    global _EMPTY_PARSE_COUNT
+    with _PARSE_FAIL_LOCK:
+        _EMPTY_PARSE_COUNT += 1
+        n = _EMPTY_PARSE_COUNT
+    if n == 1 or n % _PARSE_FAIL_LOG_EVERY == 0:
+        print(f"[reward] empty_parse #{n}: math_verify.parse returned []", flush=True)
+
+
 def _is_correct(response: str, label: str) -> bool:
     """math-verify equivalence between the model's boxed answer and the gold label."""
     if label is None:
@@ -130,29 +180,26 @@ def _is_correct(response: str, label: str) -> bool:
     if _MV is not None:
         parse, verify = _MV
         try:
-            # parsing_timeout=None / timeout_seconds=None disable math-verify's
-            # signal.alarm()-based timeout, which raises "signal only works in main
-            # thread" when reward_func runs in an OpenRLHF remote-reward worker thread.
-            # Without this, parse() threw on EVERY call in training and the bare except
-            # silently scored all answers wrong (gt_accuracy stuck at 0 — the gt arm was
-            # effectively format-only). See math-verify parse() threaded-env guidance.
+            # Timeouts are disabled via _patch_math_verify_timeout(); pass a
+            # positive int so math-verify never hits signal.alarm(None).
             gold_parsed = parse(
                 gold if "\\boxed" in gold or "$" in gold else f"${gold}$",
-                parsing_timeout=None,
+                parsing_timeout=5,
             )
-            pred_parsed = parse(response, parsing_timeout=None)
+            pred_parsed = parse(response, parsing_timeout=5)
             if not gold_parsed or not pred_parsed:
+                _record_empty_parse()
                 return False
             # math_verify.verify(gold, target) — order matters; try both directions.
-            return bool(verify(gold_parsed, pred_parsed, timeout_seconds=None)) or bool(
-                verify(pred_parsed, gold_parsed, timeout_seconds=None)
+            return bool(verify(gold_parsed, pred_parsed, timeout_seconds=5)) or bool(
+                verify(pred_parsed, gold_parsed, timeout_seconds=5)
             )
         except Exception as e:
             _record_parse_fail(e)
             return False
     # Fallback: sympy-based grader on the extracted boxed answer.
     boxed = _extract_boxed(response) or response
-    if "_grade_answer" in globals() and _grade_answer is not None:
+    if _grade_answer is not None:
         try:
             return bool(_grade_answer(boxed, gold))
         except Exception as e:
@@ -212,6 +259,7 @@ def reward_func(queries: List[str], prompts: List[str], labels: List[str], **kwa
     n_correct = 0
     n_boxed = 0
     fails_before = _PARSE_FAIL_COUNT
+    empty_before = _EMPTY_PARSE_COUNT
 
     for i, query in enumerate(queries):
         prompt = prompts[i] if i < len(prompts) else ""
@@ -236,12 +284,15 @@ def reward_func(queries: List[str], prompts: List[str], labels: List[str], **kwa
     rewards_tensor = torch.tensor(rewards, dtype=torch.float)
     n = max(1, len(rewards))
     batch_fails = max(0, _PARSE_FAIL_COUNT - fails_before)
+    batch_empty = max(0, _EMPTY_PARSE_COUNT - empty_before)
     extra_logs = {
         "reward_mean": rewards_tensor.mean(),
         "boxed_rate": torch.tensor(n_boxed / n, dtype=torch.float),
         # Logging only — reward tensors above are unchanged by this counter.
         "parse_fail_rate": torch.tensor(batch_fails / n, dtype=torch.float),
         "parse_fail_count": torch.tensor(float(batch_fails), dtype=torch.float),
+        "empty_parse_rate": torch.tensor(batch_empty / n, dtype=torch.float),
+        "empty_parse_count": torch.tensor(float(batch_empty), dtype=torch.float),
     }
     if REWARD_MODE == "gt":
         extra_logs["gt_accuracy"] = torch.tensor(n_correct / n, dtype=torch.float)

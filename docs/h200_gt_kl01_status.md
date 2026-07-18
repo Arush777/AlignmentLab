@@ -1,9 +1,9 @@
 # H200 live run status — `gt@KL0.1` full-scale GRPO
 
-**Report date:** 2026-07-18 ~15:45 UTC (21:15 IST)  
+**Report date:** 2026-07-18 ~15:45 UTC (metrics); **job stopped 2026-07-18 ~15:52 UTC**  
 **Host:** `dgre2` (`anupam@169.38.10.80`)  
 **Repo path on host:** `/data/anupam/AlignmentLab`  
-**Verdict:** Job is **alive and stepping**, but the **gt correctness signal is dead**. Treat this run as **INVALID for RQ1 gt** until the math-verify / worker-thread timeout bug is fixed and a smoke gate passes. See §5–§7.
+**Verdict:** Job was **alive and stepping**, but the **gt correctness signal was dead**. Run marked **INVALID for RQ1 gt**. Session `alab-gt-kl01` was **stopped** to free GPUs 3–7; verifier fix is in `src/rl/reward.py` (`_patch_math_verify_timeout`). **Do not restart** until a local/H200 smoke shows `gt_accuracy > 0`. See §5–§7.
 
 Related: [`rq1_validity.md`](rq1_validity.md), [`rq1_findings.md`](rq1_findings.md), [`implementation_notes.md`](implementation_notes.md) (Bug 1).
 
@@ -172,10 +172,10 @@ Local helpers: `scripts/remote/status.sh`, meta at `results/remote_jobs/gt-kl01.
 
 ## 7. Recommended next steps (gates)
 
-1. **Abort** `alab-gt-kl01` / run `q3-8b_grpo-gt_math5h200_kl01c`. Preserve TB, `samples.jsonl`, and `gt-kl01.log`. Tag mentally as `INVALID_gt_verifier`.
-2. **Fix** `src/rl/reward.py` for threaded math-verify (do not rely on `parsing_timeout=None`). Options: process-pool verify, patch/bypass `signal.alarm`, or in-thread sympy `grade_answer` fallback that cannot silently no-op. Add **`empty_parse_rate`** (or similar) so falsy `[]` is visible.
-3. **Smoke gate (must pass before full restart):** 1–3 GRPO steps on H200 → `train/gt_accuracy` ∈ ~[0.15, 0.50], `reward_mean` ≳ 0.2, sample rewards include **1.0 or 1.1**.
-4. **Restart** full gt@KL0.1 only after smoke green (same config / data / 5-GPU recipe).
+1. **Done (2026-07-18):** Abort `alab-gt-kl01` / run `q3-8b_grpo-gt_math5h200_kl01c`. GPUs 3–7 freed. Preserve TB, `samples.jsonl`, and `gt-kl01.log`. Tag as `INVALID_gt_verifier`.
+2. **Done (code):** Fix `src/rl/reward.py` — patch math-verify `timeout` to a no-op; add `empty_parse_rate`. Strengthen `tests/test_reward.py::test_is_correct_from_worker_thread`.
+3. **Smoke gate before any full restart:** 1–3 GRPO steps on H200 → `train/gt_accuracy` ∈ ~[0.15, 0.50], `reward_mean` ≳ 0.2, sample rewards include **1.0 or 1.1**.
+4. **Restart** full gt@KL0.1 only after smoke green (prefer **4 GPUs 3+1** on the shared host).
 5. **KL watch** at steps 100–150: KL ≲ 0.15; escalate if KL ≳ 0.3 **and** accuracy falling from peak ([`rq1_validity.md`](rq1_validity.md)).
 6. **Only then** rematch format + random at **KL=0.1** on the same recipe; then eval + RQ1 table.
 

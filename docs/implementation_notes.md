@@ -22,10 +22,20 @@ That is the whole point of the control — identical data, steps, KL, group size
 OpenRLHF runs the reward function in a **worker thread** → `parse()` raised, a bare
 `except: return False` swallowed it → gt correctness *never scored*, gt_accuracy pinned at 0.
 gt was silently identical to a degenerate format arm for a whole prior experiment.
-**Fix** (`src/rl/reward.py`): call `parse(..., parsing_timeout=None)` and
-`verify(..., timeout_seconds=None)` to disable the signal-based timeout on worker threads.
+
+**Fix attempt 1 (insufficient):** call `parse(..., parsing_timeout=None)`. On math-verify
+**0.7.0** this does **not** disable the timeout wrapper — it still runs
+`signal.alarm(None)` → TypeError → parse catches internally → returns `[]` →
+`_is_correct` returns False with `parse_fail_rate` still 0. The H200 full-scale run
+`q3-8b_grpo-gt_math5h200_kl01c` hit this: boxed_rate ~0.9, rewards only `{0.0, 0.1}`,
+gt_accuracy = 0 for 30 steps. See `docs/h200_gt_kl01_status.md`.
+
+**Fix (current):** patch `math_verify.utils.timeout` (and the `parser`/`grader` aliases)
+to a no-op decorator at gt-mode import time (`_patch_math_verify_timeout` in
+`src/rl/reward.py`). Also log `empty_parse_rate` so silent `[]` returns are visible.
+
 **Verification signal:** a healthy gt now shows `train/gt_accuracy > 0` (≈0.25–0.40) within
-the first few steps.
+the first few steps. Regression: `tests/test_reward.py::test_is_correct_from_worker_thread`.
 
 ## Bug 2 — the 4-GPU colocation deadlock
 On the 4-GPU `colocate_all` config, the driver deadlocks in `ray.get()` (GPUs at 0% util)
